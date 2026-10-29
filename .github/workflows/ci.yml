@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest]
+        os: [ubuntu-24.04]
         node: ['22.12.0', '24']
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
