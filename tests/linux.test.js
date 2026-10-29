@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const { snapshot, startWindowWatch, createHyprland, monitorFor, gameOf } = require('../src/main/hyprland');
 
 const bounds = { x: -1920, y: 0, width: 1920, height: 1080 };
@@ -391,11 +392,11 @@ test('.desktop entries: the [Desktop Entry] group only, hidden ones left out, yo
   assert.deepEqual(parse('[Desktop Entry]\nName=Firefox\nName[fr]=Firefox FR\nType=Application\n[Desktop Action new]\nName=New'),
     { Name: 'Firefox', Type: 'Application' });
   const files = {
-    '/h/.local/share/applications': { 'a.desktop': '[Desktop Entry]\nType=Application\nName=Mine\n', 'hid.desktop': '[Desktop Entry]\nType=Application\nName=X\nNoDisplay=true' },
-    '/usr/share/applications': { 'a.desktop': '[Desktop Entry]\nType=Application\nName=System\n', 'b.desktop': '[Desktop Entry]\nType=Application\nName=Bee\nStartupWMClass=bee-app' },
+    [path.join('/h', '.local', 'share', 'applications')]: { 'a.desktop': '[Desktop Entry]\nType=Application\nName=Mine\n', 'hid.desktop': '[Desktop Entry]\nType=Application\nName=X\nNoDisplay=true' },
+    [path.join('/usr/share', 'applications')]: { 'a.desktop': '[Desktop Entry]\nType=Application\nName=System\n', 'b.desktop': '[Desktop Entry]\nType=Application\nName=Bee\nStartupWMClass=bee-app' },
   };
   const list = (d) => { if (!files[d]) throw new Error('none'); return Object.keys(files[d]); };
-  const read = (p) => files[p.slice(0, p.lastIndexOf('/'))][p.slice(p.lastIndexOf('/') + 1)];
+  const read = (p) => files[path.dirname(p)][path.basename(p)];
   const got = entries({ env: { HOME: '/h', XDG_DATA_DIRS: '/usr/share' }, list, read });
   assert.deepEqual(got.map((e) => e.name), ['Mine', 'Bee']);
   assert.equal(got[1].wmClass, 'bee-app');
