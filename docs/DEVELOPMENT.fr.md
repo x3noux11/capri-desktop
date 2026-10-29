@@ -66,7 +66,7 @@ Le serveur X virtuel ne valide pas la transparence avec le compositeur, les clic
 
 ## Intégration continue
 
-Le workflow [Tests](../.github/workflows/ci.yml) exécute `npm test` sous Linux et
+Le workflow [Tests](../.github/workflows/ci.yml) exécute `npm test` sous Linux
 avec Node.js 22.12 et 24. Un job Linux distinct lance le test Electron
 sous Xvfb avec son sandbox activé. Les dépendances sont installées avec `npm ci`.
 
