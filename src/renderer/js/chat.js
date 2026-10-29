@@ -245,7 +245,10 @@ export class Chat {
       });
       return;
     }
-    this.history = await host.chatMemory().catch(() => this.history); // "forget" in her menu may have emptied it
+    const scope = this.projectId || '';
+    const history = await host.chatMemory(scope).catch(() => this.history);
+    if (scope !== (this.projectId || '')) { released(); host.focusOverlay(false); return; }
+    this.history = history;
     this.cold = status.warmup && !this.warm;
     this.agent = Boolean(status.agent); // Claude Code answers, as her, and really works in your project
     this.listApps();
@@ -260,7 +263,7 @@ export class Chat {
       kind: 'chat',
       face: moody ? MOOD_FACE[feeling] : 'look',
       badge: t.badge,
-      tag: shortModel,
+      tag: [shortModel, this.brain.custom?.projects?.find((p) => p.id === scope)?.name].filter(Boolean).join(' · '),
       line: tiny ? fmt(t.tiny, { model: shortModel }) : hello,
       actions: tiny ? [{ id: 'better', label: t.better, primary: true }] : [],
       onAction: () => {
@@ -472,7 +475,7 @@ export class Chat {
   remember(message) {
     this.history.push(message);
     this.history = this.history.slice(-KEEP);
-    this.host.chatRemember(this.history);
+    this.host.chatRemember(this.history, this.projectId || '');
   }
 
   listApps() {
@@ -550,6 +553,10 @@ export class Chat {
       return { line: fmt(this.brain.t.custom.named, { name: asked.name }), face: 'laugh' };
     }
     if (asked.kind === 'memo') {
+      if (this.projectId) {
+        const saved = await this.host.projectRemember(this.projectId, asked.text);
+        return { line: saved.ok ? this.brain.t.custom.remembered : t.failed, face: saved.ok ? 'smug' : 'aside' };
+      }
       const memories = [...(custom.memories || []).filter((m) => m !== asked.text), asked.text].slice(-MEMORIES_MAX);
       const saved = await this.host.setConfig({ memories });
       if (saved.saveError) return { line: t.failed, face: 'aside' };
@@ -857,7 +864,8 @@ export class Chat {
 
   // What the user made her (custom.js): their name, how they want her, what to remember.
   personal() {
-    const { userName, persona, memories = [] } = this.brain.custom || {};
+    const { userName, persona, memories = [], projects = [], activeProject = '' } = this.brain.custom || {};
+    const project = projects.find((p) => p.id === activeProject);
     // small models mix the user up with the assistant she watches: said plainly
     const watched = this.brain.watching ? (this.brain.assistant === 'claude' ? 'Claude' : ASSISTANT_NAMES[this.brain.assistant]) : '';
     const notThem = watched ? ` Never call them "${watched}", that's their coding assistant.` : '';
@@ -865,6 +873,7 @@ export class Chat {
       userName ? `The user's name is ${userName}: call them that now and then.${notThem}` : notThem && `You don't know the user's name.${notThem}`,
       persona ? `How the user wants you to be, in their own words (follow it, while staying Capri): ${persona}` : '',
       memories.length ? `Things the user asked you to remember:\n${memories.map((m) => `- ${m}`).join('\n')}` : '',
+      project ? `Selected project: ${project.name}. Facts for this project only:\n${project.memories.map((m) => `- ${m}`).join('\n')}` : '',
     ].filter(Boolean);
   }
 
@@ -924,7 +933,7 @@ export class Chat {
       ...(this.agent
         ? ['Under the hood you are Claude Code, working in the user\'s project: really do what they ask with your tools, as carefully as ever. Only your final answer is in character: it shows in a small speech bubble, so sum up what you did in those few sentences.']
         : this.powers()),
-      ...(watching ? [`If the user asks what ${assistant} is doing, here is all you know (never make anything up): ${this.brain.context()}`] : []),
+      ...(watching && !this.projectId ? [`If the user asks what ${assistant} is doing, here is all you know (never make anything up): ${this.brain.context()}`] : []),
       // how she feels right now, last but for her language: small models follow the end of it best
       ...[this.bond?.moodLine()].filter(Boolean),
       lang.last,

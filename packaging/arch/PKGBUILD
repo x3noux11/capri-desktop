@@ -20,7 +20,7 @@ optdepends=(
   'wl-clipboard: capri --ask-selection'
   'glib2: opening apps from her chat (gio launch)'
 )
-source=("$pkgname::git+file://${startdir}/../..#branch=${BRANCH:-feat/hyprland-input}"
+source=("$pkgname::git+file://${startdir}/../..#branch=${BRANCH:-main}"
         'capri' 'capri.desktop' 'hyprland.lua')
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 

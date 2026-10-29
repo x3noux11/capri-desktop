@@ -95,4 +95,4 @@ async function inspectPlatform({ platform = process.platform, env = process.env,
   };
 }
 
-module.exports = { inspectPlatform };
+module.exports = { inspectPlatform, commandExists };

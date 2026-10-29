@@ -4,7 +4,7 @@ const EN = {
   next: 'Next', back: 'Back', close: 'Close', done: 'Ready', setup: 'Set up my chat', custom: 'Personalize', add: 'Add', edit: 'Edit', remove: 'Delete',
   clear: 'Delete all memories', history: 'Clear conversations', yes: 'Confirm', no: 'Cancel', save: 'Save',
   empty: 'No saved memories yet.', memoryHow: 'These facts survive restarts and are included in your AI chat. You decide what I keep.',
-  memoryPrompt: 'A preference, a project, something to remember…', historyHow: 'Erase the conversation history and its recovery backup? Your personal memories stay.',
+  memoryPrompt: 'A preference, a project, something to remember…', historyHow: 'Erase all general and project conversations and their recovery backups? Your personal memories stay.',
   clearHow: 'Delete every personal memory, including the recovery backup? Your conversations stay.',
   failed: 'I could not complete that. Refresh the diagnostic or try again.', saved: 'Saved.',
   noWindows: 'No controllable windows found. Window controls require Windows or Hyprland.',
@@ -24,7 +24,7 @@ const FR = {
   next: 'Suivant', back: 'Retour', close: 'Fermer', done: 'Prête', setup: 'Configurer mon chat', custom: 'Personnaliser', add: 'Ajouter', edit: 'Modifier', remove: 'Supprimer',
   clear: 'Effacer tous les souvenirs', history: 'Effacer les conversations', yes: 'Confirmer', no: 'Annuler', save: 'Enregistrer',
   empty: 'Aucun souvenir enregistré pour le moment.', memoryHow: 'Ces informations persistent après redémarrage et sont transmises au modèle de ton chat. Tu choisis ce que je garde.',
-  memoryPrompt: 'Une préférence, un projet, quelque chose à retenir…', historyHow: 'Effacer les conversations et leur sauvegarde de récupération ? Tes souvenirs personnels restent.',
+  memoryPrompt: 'Une préférence, un projet, quelque chose à retenir…', historyHow: 'Effacer toutes les conversations, générales et par projet, ainsi que leurs sauvegardes ? Tes souvenirs personnels restent.',
   clearHow: 'Supprimer tous les souvenirs personnels et leur sauvegarde de récupération ? Tes conversations restent.',
   failed: 'Je n’ai pas pu terminer. Actualise le diagnostic ou réessaie.', saved: 'Enregistré.',
   noWindows: 'Aucune fenêtre contrôlable trouvée. Il faut Windows ou une session Hyprland.',
@@ -43,6 +43,10 @@ export const companionText = (lang) => lang === 'fr' ? FR : EN;
 
 export function localCommand(text) {
   const s = text.trim().replace(/[.!?]+\s*$/, '').trim();
+  if (/^(?:mes projets|my projects|projects|projets)$/i.test(s)) return { kind: 'projectPanel' };
+  if (/^(?:mes routines|routines|routines hyprland)$/i.test(s)) return { kind: 'routinePanel' };
+  const routine = /^(?:pr[ée]pare (?:mon |l['’])?espace|lance la routine|run routine|prepare workspace)\s+(.{1,80})$/iu.exec(s);
+  if (routine) return { kind: 'routinePanel', name: routine[1] };
   if (/^(?:aide|help|prise en main|getting started)[.!?]*$/i.test(s)) return { kind: 'tour' };
   if (/^(?:ma mémoire|mes souvenirs|my memory|what do you remember|que sais-tu de moi|qu['’]est-ce que tu sais de moi|que te rappelles-tu)[.!?]*$/i.test(s)) return { kind: 'memory' };
   const match = /^(?:capri[, ]+)?(agrandis|réduis|reduis|restaure|mets devant|mets au premier plan|maximize|minimize|restore|focus)\s+(.{2,80}?)\s*[.!?]*$/iu.exec(s);
@@ -64,10 +68,17 @@ export class Companion {
     }
     catch { await this.guide.scene(() => this.guide.ask({ face: 'aside', line: this.t.failed, actions: this.guide.ok() })); }
   }
-  async save(memories) {
-    const result = await this.host.setConfig({ memories });
+  async save(memories, projectId = null) {
+    let patch = { memories };
+    if (projectId) {
+      const cfg = await this.host.getConfig();
+      if (!cfg.projects.some((p) => p.id === projectId)) throw new Error('Project removed');
+      patch = { projects: cfg.projects.map((p) => p.id === projectId ? { ...p, memories } : p) };
+    }
+    const result = await this.host.setConfig(patch);
     if (result.saveError) throw new Error('Memory was not saved');
-    this.brain.custom.memories = result.memories;
+    if (projectId) this.brain.custom.projects = result.projects;
+    else this.brain.custom.memories = result.memories;
   }
   async tour() {
     let followUp;
@@ -84,16 +95,18 @@ export class Companion {
     await this.host.setConfig({ companionTour: true });
     return followUp;
   }
-  async memory() {
+  async memory({ projectId = null } = {}) {
     const scene = this.guide.sceneId;
     let page = 0;
     for (;;) {
       const cfg = await this.host.getConfig();
       if (scene !== this.guide.sceneId) return;
-      const items = cfg.memories || [];
+      const project = projectId && cfg.projects?.find((p) => p.id === projectId);
+      if (projectId && !project) return;
+      const items = project ? project.memories : cfg.memories || [];
       page = Math.min(page, Math.max(0, Math.ceil(items.length / 5) - 1));
       const visible = items.slice(page * 5, page * 5 + 5);
-      const action = await this.guide.ask({ face: 'smug', line: `${this.t.memory} · ${items.length} / 30`,
+      const action = await this.guide.ask({ face: 'smug', line: `${this.t.memory} · ${project ? project.name : this.brain.lang === 'fr' ? 'Général' : 'General'} · ${items.length} / 30`,
         quote: `${this.t.memoryHow}\n\n${visible.length ? visible.map((m, i) => `${page * 5 + i + 1}. ${m}`).join('\n') : this.t.empty}`,
         actions: [...visible.map((_m, i) => ({ id: `item:${i}`, label: `${this.t.edit} ${page * 5 + i + 1}` })),
           ...(items.length < 30 ? [{ id: 'add', label: this.t.add, primary: true }] : []),
@@ -109,7 +122,7 @@ export class Companion {
           actions: [{ id: 'yes', label: this.t.yes, primary: true }, { id: 'no', label: this.t.no }] });
         if (!yes) return;
         if (yes === 'yes') {
-          if (action === 'clear') await this.save([]);
+          if (action === 'clear') await this.save([], projectId);
           else if (!await this.host.forgetChats()) throw new Error('Could not clear history');
         }
         continue;
@@ -119,12 +132,12 @@ export class Companion {
         quote: index < 0 ? this.t.memoryHow : items[index], placeholder: this.t.memoryPrompt, send: this.t.save,
         actions: [...(index >= 0 ? [{ id: 'remove', label: this.t.remove }] : []), { id: 'back', label: this.t.back }] });
       if (!result) return;
-      if (result.action === 'remove') await this.save(items.filter((_m, i) => i !== index));
+      if (result.action === 'remove') await this.save(items.filter((_m, i) => i !== index), projectId);
       else if (result.text?.trim()) {
         const value = result.text.trim().slice(0, 200);
         if (index < 0) { if (!items.includes(value)) items.push(value); }
         else items[index] = value;
-        await this.save(items);
+        await this.save(items, projectId);
       }
     }
   }

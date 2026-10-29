@@ -31,6 +31,10 @@ async function main() {
   const electron = require('electron');
   const port = await availablePort();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-smoke-'));
+  const data = path.join(profile, 'data');
+  fs.mkdirSync(path.join(data, 'applications'), { recursive: true });
+  fs.writeFileSync(path.join(data, 'applications', 'smoke-editor.desktop'),
+    '[Desktop Entry]\nType=Application\nName=Capri Smoke Editor\nExec=/usr/bin/true\n');
   const log = [];
   let exited = false;
   let spawnError;
@@ -42,7 +46,7 @@ async function main() {
     '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--password-store=basic'], {
     cwd: ROOT,
     env: { ...process.env, CAPRI_PORT: String(port), XDG_CONFIG_HOME: profile,
-      XDG_CACHE_HOME: path.join(profile, 'cache'), HYPRLAND_INSTANCE_SIGNATURE: '' },
+      XDG_CACHE_HOME: path.join(profile, 'cache'), XDG_DATA_HOME: data, HYPRLAND_INSTANCE_SIGNATURE: '' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const closed = new Promise((resolve) => child.once('close', resolve));
@@ -70,6 +74,17 @@ async function main() {
 
   async function evaluate(js) {
     return (await request('debug/eval', { js })).value;
+  }
+
+  async function click(id) {
+    const selector = `.panel__action[data-id="${id}"]`;
+    await waitFor(() => evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`), `button ${id}`);
+    await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  }
+  async function type(text) {
+    await waitFor(() => evaluate('window.dev.panel.current?.chat && window.dev.panel.current?.guide'), 'an editor input');
+    await evaluate(`(() => { const p = window.dev.panel; p.chatInput.value = ${JSON.stringify(text)};
+      p.chatForm.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true})); })()`);
   }
 
   async function waitFor(check, description) {
@@ -155,6 +170,51 @@ async function main() {
     await waitFor(() => evaluate('!window.dev.guide.running'), 'the memory panel to close');
     assert.equal(await evaluate('window.dev.capri.lowPower'), true);
 
+    // Project selection, actual project memory IPC, history isolation and deletion.
+    await request('debug/command', { name: 'projectPanel' });
+    await click('add');
+    await type('Smoke project A');
+    await waitFor(() => evaluate('(async () => (await window.host.getConfig()).projects.length === 1)()'), 'project creation');
+    const projectA = (await evaluate('window.host.getConfig()')).projects[0];
+    await click('p:0'); await click('select');
+    await waitFor(() => evaluate(`window.dev.chat.projectId === ${JSON.stringify(projectA.id)}`), 'project selection');
+    await evaluate('window.dev.chat.doNow({kind:"memo", text:"private project A fact"})');
+    const scoped = await evaluate('window.host.getConfig()');
+    assert.deepEqual(scoped.projects[0].memories, ['private project A fact']);
+    assert.deepEqual(scoped.memories, []);
+    const projectB = { id: require('node:crypto').randomUUID(), name: 'Smoke project B', memories: [] };
+    await evaluate(`window.host.chatRemember([{role:"user", content:"private project A conversation"}], ${JSON.stringify(projectA.id)})`);
+    await evaluate('window.host.chatRemember([{role:"user", content:"general conversation"}], "")');
+    await evaluate(`window.host.setConfig(${JSON.stringify({ projects: [...scoped.projects, projectB], activeProject: projectB.id })})`);
+    await waitFor(() => evaluate(`window.dev.chat.projectId === ${JSON.stringify(projectB.id)}`), 'switch to project B');
+    assert.deepEqual(await evaluate(`window.host.chatMemory(${JSON.stringify(projectB.id)})`), []);
+    assert.equal((await evaluate(`window.host.chatMemory(${JSON.stringify(projectA.id)})`))[0].content, 'private project A conversation');
+    assert.equal((await evaluate('window.host.chatMemory("")'))[0].content, 'general conversation');
+    await evaluate(`window.host.setConfig(${JSON.stringify({ projects: [projectB] })})`);
+    const memoryFiles = fs.readdirSync(profile, { recursive: true }).filter((f) => /(?:^|[/\\])memory\.json(?:\.bak)?$/.test(f));
+    assert.ok(memoryFiles.length >= 2);
+    for (const file of memoryFiles) assert.doesNotMatch(fs.readFileSync(path.join(profile, file), 'utf8'), /private project A conversation/);
+    await evaluate('window.dev.panel.hide()');
+    await waitFor(() => evaluate('!window.dev.guide.running'), 'the old project list to close');
+    await request('debug/command', { name: 'projectPanel' });
+    await click('p:0'); await click('remove'); await click('yes');
+    await waitFor(() => evaluate('(async () => !(await window.host.getConfig()).projects.length)()'), 'project deletion');
+    assert.equal((await evaluate('window.host.getConfig()')).activeProject, '');
+    await evaluate('window.dev.panel.hide()');
+    await waitFor(() => evaluate('!window.dev.guide.running'), 'the project panel to close');
+
+    // Build a saved routine through the real editor. No apps are executed on this X11 runner.
+    await request('debug/command', { name: 'routinePanel' });
+    await click('add'); await type('Smoke dev'); await click('addStep');
+    await type('Capri Smoke Editor'); await click('a:0'); await type('3'); await click('save');
+    await waitFor(() => evaluate('(async () => (await window.host.getConfig()).routines.length === 1)()'), 'routine persistence');
+    const savedRoutine = (await evaluate('window.host.getConfig()')).routines[0];
+    assert.equal(savedRoutine.steps[0].workspace, 3);
+    await click('r:0'); await click('run'); await click('cancel');
+    await evaluate('window.dev.panel.hide()');
+    await waitFor(() => evaluate('!window.dev.guide.running'), 'routine cancellation');
+    await evaluate('window.host.forgetChats()');
+
     // Only synthetic keys and a loopback fake provider are used. Force basic_text
     // to prove that Electron reporting encryption available cannot weaken policy.
     assert.equal(cfg.keyStorage.persistent, false);
@@ -205,9 +265,17 @@ async function main() {
       'the completed session to be removed');
     assert.equal(exited, false);
     assert.doesNotMatch(log.join(''), /\[capri\] boot failed|\[capri\] renderer gone/);
-    console.log(`Smoke test passed: Electron, WebGL (${renderer.width}×${renderer.height}), onboarding, memory CRUD, history erasure, power mode, diagnostics, session-only keys and hook delivery.`);
+    console.log(`Smoke test passed: Electron, WebGL (${renderer.width}×${renderer.height}), onboarding, memories, project isolation/deletion, routine editor/cancellation, power mode, diagnostics, session-only keys and hook delivery.`);
   } catch (err) {
     console.error(log.join(''));
+    const state = await evaluate(`(() => {
+      const d = window.dev;
+      return d && { guide: d.guide.running, badge: d.panel.current?.badge,
+        kind: d.panel.current?.kind, actions: d.panel.current?.actions?.map(a => a.id),
+        busy: d.capri.busy, hidden: d.capri.hidden, mode: d.capri.mode,
+        motion: document.documentElement.dataset.motion, fx: d.fx.items.map(i => i.type) };
+    })()`).catch(() => null);
+    console.error('Smoke renderer state:', JSON.stringify(state));
     throw err;
   } finally {
     // Stop only the instance created by this test, and remove only its own profile.

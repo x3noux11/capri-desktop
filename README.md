@@ -9,6 +9,11 @@ remember?`, `maximize Firefox` and `minimize kitty`. Window controls do not yet
 click or type inside other applications. See the [CachyOS / Hyprland guide](docs/linux/README.fr.md)
 for dependencies, Lua/hyprlang rules and keyboard shortcuts.
 
+**My projects** keeps each project's memories and conversation separate, while
+general preferences stay available everywhere. **Hyprland routines** saves plans
+of installed applications and workspaces, with a preview and confirmation before
+running. Chat shortcuts: `my projects`, `routines`, `prepare workspace dev`.
+
 **Linux / CachyOS / Hyprland:** [setup, compositor rules and limitations (French)](docs/linux/README.fr.md).
 
 Capri, the *Project Capricorn* construct from Cyberpunk: Edgerunners season 2, lives on your desktop

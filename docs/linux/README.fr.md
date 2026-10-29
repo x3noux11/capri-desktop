@@ -108,6 +108,8 @@ capri --guide
 capri --memory
 capri --windows
 capri --talk
+capri --projects
+capri --routines
 ```
 
 Exemples facultatifs pour `hyprland.conf` (adapter le chemin de `capri`) :
@@ -116,6 +118,8 @@ Exemples facultatifs pour `hyprland.conf` (adapter le chemin de `capri`) :
 bind = SUPER SHIFT, C, exec, capri --talk
 bind = SUPER SHIFT, M, exec, capri --memory
 bind = SUPER SHIFT, W, exec, capri --windows
+bind = SUPER ALT, P, exec, capri --projects
+bind = SUPER ALT, R, exec, capri --routines
 bind = SUPER SHIFT, R, togglespecialworkspace, capri-minimized
 exec-once = capri
 ```
@@ -150,12 +154,69 @@ ligne. Les fichiers restent dans le dossier `userData` d’Electron (sous le dos
 de configuration XDG). Une suppression purge aussi la sauvegarde `.bak` ; les
 fichiers `.corrupt-*` préservés pour récupération manuelle restent à gérer séparément.
 
-L’historique conservé est borné à 60 messages et 48 000 caractères ; le contexte
+L’historique conservé est borné, pour chaque conversation générale ou de projet,
+à 60 messages et 48 000 caractères ; le contexte
 conversationnel envoyé au modèle est limité à 20 messages et 16 000 caractères.
 **Économiser les ressources** passe les dessins au repos de 12 à 6 par seconde
 et la lecture du pointeur Hyprland de 20 à 10 fois par seconde. Les séquences
 d’action gardent leur cadence. Le suivi des fenêtres s’arrête quand l’overlay est
 masqué, notamment pendant le verrouillage ; il reprend lorsque l’overlay revient.
+
+### Projets : souvenirs et conversations séparés
+
+**Mes projets** permet de créer, renommer et supprimer jusqu’à 20 projets.
+Choisir un projet puis **Utiliser ce projet** sélectionne son contexte pour les
+prochains échanges. Son nom apparaît à côté du modèle dans le chat. Le bouton
+**Conversation générale** revient au contexte général.
+
+- **Souvenirs du projet** ouvre la liste des faits propres à ce projet : ajout,
+  correction et suppression, avec la même limite de 30 souvenirs.
+- Dans le chat, `souviens-toi que…` enregistre désormais le fait dans le projet
+  sélectionné ; en conversation générale, le souvenir reste général.
+- Les souvenirs généraux, ton nom et ta personnalité restent disponibles partout.
+  Les souvenirs et les conversations des autres projets ne sont pas inclus dans
+  le contexte du modèle. L’activité globale des assistants de code est omise du
+  chat lorsqu’un projet est sélectionné, pour éviter d’y mêler un autre travail.
+- Changer de projet interrompt la réponse en cours et réinitialise la session
+  Claude Code du chat. Les conversations précédentes restent accessibles lorsque
+  tu reviens sur leur projet.
+- Supprimer un projet efface ses souvenirs et sa conversation locale, ainsi que
+  leurs copies de récupération `.bak`. Les fichiers `.corrupt-*` déjà préservés
+  pour récupération manuelle restent à gérer séparément. **Effacer les
+  conversations** efface les historiques de tous les projets et l’historique général.
+
+Le choix du projet est explicite : il ne change pas le dossier de travail de
+Claude Code et ne suit pas automatiquement le titre d’une fenêtre. La commande
+`mes projets` ouvre le sélecteur depuis le chat.
+
+### Routines Hyprland
+
+**Routines Hyprland** permet d’enregistrer jusqu’à 12 routines de 8 applications
+maximum. Pour créer « Dev » : choisir **Créer**, donner son nom, puis **Ajouter une
+application**, chercher une application installée et choisir son espace de travail
+(de 1 à 99). Répéter pour le terminal, l’éditeur et le navigateur, puis **Enregistrer**.
+Les étapes existantes peuvent être modifiées ou supprimées, et une routine peut
+être renommée depuis **Modifier**.
+
+Choisir la routine, puis **Exécuter** affiche son plan avant **Confirmer**.
+`prépare mon espace dev` ou `lance la routine Dev` ouvre aussi son sélecteur dans
+le chat. `capri --routines` ouvre le panneau quand Capri est déjà lancée.
+
+Si une fenêtre correspond à l’application (classe `StartupWMClass` ou identifiant
+du fichier `.desktop`), la première fenêtre correspondante est déplacée vers
+l’espace choisi, sans changer l’espace actif. Sinon Capri demande à Hyprland
+de lancer l’application sur cet espace via `gio launch`. Les dispatchers Lua et
+hyprlang sont pris en charge. Certains programmes réutilisent une fenêtre existante,
+passent par D-Bus ou ouvrent leur fenêtre dans un autre processus : leur placement
+peut alors dépendre du programme et des règles du compositeur.
+
+Les routines utilisent uniquement des applications du catalogue `.desktop`, sans
+champ de commande shell libre. Le catalogue est vérifié à nouveau avant toute
+action ; une application disparue bloque toute la routine. Une erreur d’exécution
+interrompt les étapes suivantes et le résultat indique les étapes déjà envoyées.
+Un changement du plan après son aperçu demande de rouvrir la routine.
+Il faut Hyprland et `gio` pour exécuter les routines ; leur préparation reste
+possible sous X11, sans lancer d’application pendant la configuration.
 
 Pour conserver une clé API entre les lancements, un trousseau GNOME/libsecret ou
 KWallet doit être disponible et déverrouillé. Sinon Capri utilise la clé uniquement

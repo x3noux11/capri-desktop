@@ -14,5 +14,7 @@ hl.window_rule({
 hl.bind("SUPER + SHIFT + C", hl.dsp.exec_cmd("capri --talk"))
 hl.bind("SUPER + SHIFT + M", hl.dsp.exec_cmd("capri --memory"))
 hl.bind("SUPER + SHIFT + W", hl.dsp.exec_cmd("capri --windows"))
+hl.bind("SUPER + ALT + P", hl.dsp.exec_cmd("capri --projects"))
+hl.bind("SUPER + ALT + R", hl.dsp.exec_cmd("capri --routines"))
 -- To recover minimized windows even when Capri is closed:
 hl.bind("SUPER + SHIFT + R", hl.dsp.workspace.toggle_special("capri-minimized"))

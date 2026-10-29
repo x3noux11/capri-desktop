@@ -10,6 +10,7 @@ import { Chat } from './chat.js';
 import { Setup } from './setup.js';
 import { Custom } from './custom.js';
 import { Companion } from './companion.js';
+import { Workspaces } from './workspaces.js';
 import { Bond, Jealousy } from './bond.js';
 import { Reminders, clock } from './reminders.js';
 import { Look } from './look.js';
@@ -37,7 +38,8 @@ const AWAY_MS = 15 * 60 * 1000; // the pointer still this long: you were away fr
 const SNOOZE_MS = 10 * 60 * 1000;
 
 // what you made her, from the config (custom.js)
-const mine = (cfg) => ({ userName: cfg.userName || '', persona: cfg.persona || '', myLines: cfg.myLines || [], memories: cfg.memories || [] });
+const mine = (cfg) => ({ userName: cfg.userName || '', persona: cfg.persona || '', myLines: cfg.myLines || [], memories: cfg.memories || [],
+  projects: cfg.projects || [], activeProject: cfg.activeProject || '' });
 
 // your desktop's colors on her panels, or hers again (main.js reads them)
 const RICE_VARS = ['--ink', '--ink-2', '--paper', '--paper-2', '--paper-3', '--violet'];
@@ -263,6 +265,10 @@ async function boot() {
   brain.custom = mine(config);
   const companion = new Companion({ guide, host, brain, chat });
   chat.companion = companion;
+  chat.projectId = config.activeProject || '';
+  const workspaces = new Workspaces({ guide, host, brain, companion });
+  companion.projectPanel = () => workspaces.projects();
+  companion.routinePanel = (options) => workspaces.routines(options);
 
   // How close she is to you (bond.js), her jealousy of your other AIs, the reminders she keeps.
   const bond = new Bond({ host, data: config.bond });
@@ -648,6 +654,13 @@ async function boot() {
     }
     brain.watching = cfg.claude !== false;
     brain.custom = mine(cfg);
+    if ((chat.projectId || '') !== (cfg.activeProject || '')) {
+      if (chat.open) panel.hide();
+      chat.close();
+      chat.projectId = cfg.activeProject || '';
+      chat.history = [];
+      chat.seen = chat.opening = null;
+    }
     brain.assistant = cfg.assistant;
     panel.labels = linesFor(cfg.lang, cfg.assistant);
     if (cfg.scale !== capri.scale) capri.setScale(cfg.scale);
@@ -669,6 +682,10 @@ async function boot() {
         break;
       case 'windowPanel':
         companion.open('windows');
+        break;
+      case 'projectPanel':
+      case 'routinePanel':
+        companion.open(cmd.name);
         break;
       case 'teleport':
         capri.teleport(capri.spot('random'));

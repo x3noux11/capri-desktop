@@ -27,6 +27,7 @@ const { normalizeHistory, normalizeMemory } = require('./chat-memory');
 const windowControl = require('./window-control').createWindowControl();
 const apps = require('./apps');
 const launch = require('./launch');
+const routines = require('./routines').createRoutines({ load: () => config.load() });
 const files = require('./files');
 const { ASSISTANTS, assistant } = require('./assistants');
 const activeAssistant = () => assistant(config.load().assistant); // Claude Code or Codex
@@ -103,7 +104,7 @@ function saveConfig(patch, renderer = false) {
   }
 }
 function forgetChats() {
-  if (!saveMemory({ history: [], claude: null }, { discardBackupHistory: true })) return false;
+  if (!saveMemory({ history: [], projectHistory: {}, claude: null }, { discardBackupHistory: true })) return false;
   for (const abort of chats.values()) abort.abort();
   llm.resetClaude();
   sendCommand('forget');
@@ -476,7 +477,19 @@ async function showDiagnostics() {
 }
 
 function updateConfig(patch, renderer = false) {
-  const saved = saveConfig(patch, renderer);
+  const before = config.load();
+  let saved = saveConfig(patch, renderer);
+  const after = config.load();
+  if (saved && before.activeProject !== after.activeProject) {
+    for (const abort of chats.values()) abort.abort();
+    llm.resetClaude();
+    if (!saveMemory({ claude: null, claudeScope: after.activeProject })) saved = false;
+  }
+  if (saved && before.projects.some((p) => !after.projects.some((n) => n.id === p.id))) {
+    const projectHistory = Object.fromEntries(Object.entries(readMemory().projectHistory || {})
+      .filter(([id]) => after.projects.some((p) => p.id === id)));
+    if (!saveMemory({ projectHistory }, { discardBackupHistory: true })) saved = false;
+  }
   if (saved && 'rest' in patch) {
     fitOverlay(); // the taskbar in her window or not
     windowWatch?.refresh();
@@ -520,6 +533,8 @@ function rebuildTray() {
     { type: 'separator' },
     { label: resolveLang(cfg.lang) === 'fr' ? 'Prise en main' : 'Getting started', click: () => sendCommand('companionTour') },
     { label: resolveLang(cfg.lang) === 'fr' ? 'Ma mémoire' : 'My memory', click: () => sendCommand('memoryPanel') },
+    { label: resolveLang(cfg.lang) === 'fr' ? 'Mes projets' : 'My projects', click: () => sendCommand('projectPanel') },
+    { label: 'Routines Hyprland', enabled: routines.supported && featureAvailable('windowControl'), click: () => sendCommand('routinePanel') },
     { label: resolveLang(cfg.lang) === 'fr' ? 'Interagir avec une fenêtre' : 'Interact with a window',
       enabled: windowControl.supported && featureAvailable('windowControl'), click: () => sendCommand('windowPanel') },
     { label: resolveLang(cfg.lang) === 'fr' ? 'Économiser les ressources' : 'Save resources',
@@ -969,7 +984,7 @@ function registerIpc() {
       };
       const cfg = config.load();
       const text = await chatWithFallback(cfg, messages, send, abort.signal, () => streamed);
-      if (cfg.provider === 'claude' && !abort.signal.aborted) saveMemory({ claude: llm.claudeMemory() });
+      if (cfg.provider === 'claude' && !abort.signal.aborted) saveMemory({ claude: llm.claudeMemory(), claudeScope: cfg.activeProject });
       return { ok: true, text };
     } catch (err) {
       return { ok: false, error: abort.signal.aborted ? 'stopped' : err.message, code: err.code || null };
@@ -1011,9 +1026,28 @@ function registerIpc() {
     const provider = cfg.provider === 'ollama' && ollama.isCloud(model) ? 'Ollama' : llm.PROVIDERS[cfg.provider]?.label || cfg.provider;
     return { local: llm.isLocal(cfg.provider, cfg, model), provider, model };
   });
-  ipcMain.handle('chat:memory', () => readMemory().history || []);
-  ipcMain.on('chat:remember', (_e, history) => Array.isArray(history) && saveMemory({ history: normalizeHistory(history) }));
+  const validScope = (scope) => scope === '' || config.load().projects.some((p) => p.id === scope);
+  ipcMain.handle('chat:memory', (_e, scope = config.load().activeProject) => {
+    if (!validScope(scope)) return [];
+    const memory = readMemory();
+    return scope ? memory.projectHistory?.[scope] || [] : memory.history || [];
+  });
+  ipcMain.on('chat:remember', (_e, history, scope = config.load().activeProject) => {
+    if (!Array.isArray(history) || !validScope(scope)) return;
+    if (scope) saveMemory({ projectHistory: { ...readMemory().projectHistory, [scope]: normalizeHistory(history) } });
+    else saveMemory({ history: normalizeHistory(history) });
+  });
   ipcMain.handle('chat:forget', () => forgetChats());
+  ipcMain.handle('projects:remember', (_e, { id, text } = {}) => {
+    if (typeof text !== 'string' || !text.trim() || text.length > 200) return { ok: false };
+    const cfg = config.load();
+    if (!cfg.projects.some((p) => p.id === id)) return { ok: false };
+    const projects = cfg.projects.map((p) => p.id === id
+      ? { ...p, memories: [...p.memories.filter((m) => m !== text), text].slice(-30) } : p);
+    return { ok: !updateConfig({ projects }, true).saveError };
+  });
+  ipcMain.handle('routines:apps', () => routines.catalog());
+  ipcMain.handle('routines:run', (_e, { id, steps } = {}) => routines.run(id, steps));
   ipcMain.on('chat:ollama', () => shell.openExternal(OLLAMA_SITE));
   // setting her up with buttons (setup.js): Ollama and a model, or a key, or an address
   const progress = (payload) => overlay?.webContents.send('setup:progress', payload);
@@ -1319,6 +1353,8 @@ function main() {
     else if (argv.includes('--memory')) sendCommand('memoryPanel');
     else if (argv.includes('--windows')) sendCommand('windowPanel');
     else if (argv.includes('--guide')) sendCommand('companionTour');
+    else if (argv.includes('--projects')) sendCommand('projectPanel');
+    else if (argv.includes('--routines')) sendCommand('routinePanel');
     else if (argv.includes('--toggle')) toggleVisible();
     else sendCommand('status');
   });
@@ -1356,7 +1392,8 @@ function main() {
     globalShortcut.register('Control+Alt+C', () => toggleVisible());
     watchRice();
     startPointer();
-    llm.restoreClaude(readMemory().claude);
+    const storedChat = readMemory();
+    llm.restoreClaude((storedChat.claudeScope || '') === config.load().activeProject ? storedChat.claude : null);
     refreshModels(); // for her menu's model list
     setTimeout(() => launch.launchables().catch(() => {}), 20000); // what she can open, before you ask
     // a screen plugged in, unplugged, or rearranged: her window fitted again, and she learns of it

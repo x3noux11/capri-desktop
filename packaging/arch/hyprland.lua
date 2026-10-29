@@ -18,3 +18,6 @@ hl.window_rule({
 hl.bind("SUPER + ALT + C", hl.dsp.exec_cmd("capri --talk"))
 -- Super+Alt+X: her chat, with the text you have selected already in it
 hl.bind("SUPER + ALT + X", hl.dsp.exec_cmd("capri --ask-selection"))
+-- Project memories and saved workspace routines
+hl.bind("SUPER + ALT + P", hl.dsp.exec_cmd("capri --projects"))
+hl.bind("SUPER + ALT + R", hl.dsp.exec_cmd("capri --routines"))

@@ -2,6 +2,7 @@
 
 const DEFAULTS = require('./config-defaults');
 const { createJsonStore } = require('./json-store');
+const { validProjects, validRoutines } = require('./workspace-settings');
 
 const record = (v) => v && typeof v === 'object' && !Array.isArray(v)
   && [Object.prototype, null].includes(Object.getPrototypeOf(v))
@@ -28,6 +29,8 @@ function normalizeSettings(value) {
     else if (name === 'displayId') { if (entry !== null && !Number.isInteger(entry)) invalid(); }
     else if (['chatModel', 'claudeCwd'].includes(name)) { if (entry !== null && typeof entry !== 'string') invalid(); }
     else if (['myLines', 'memories'].includes(name)) { if (!strings(entry)) invalid(); }
+    else if (name === 'projects') { if (!validProjects(entry)) invalid(); }
+    else if (name === 'routines') { if (!validRoutines(entry)) invalid(); }
     else if (name === 'apiKeys') {
       if (!record(entry) || Object.entries(entry).some(([id, key]) => !/^[a-z][a-z0-9_-]*$/.test(id) || typeof key !== 'string' || key.length > 16384)) invalid();
     } else if (name === 'reminders') {
@@ -38,7 +41,9 @@ function normalizeSettings(value) {
         || !record(entry.caps))) invalid();
     } else if (typeof DEFAULTS[name] === 'string' && typeof entry !== 'string') invalid();
   }
-  return { ...structuredClone(DEFAULTS), ...value, schemaVersion: 1 };
+  const result = { ...structuredClone(DEFAULTS), ...value, schemaVersion: 1 };
+  if (result.activeProject && !result.projects.some((p) => p.id === result.activeProject)) invalid();
+  return result;
 }
 
 function createSettingsStore({ file, keys, io }) {
@@ -54,7 +59,9 @@ function createSettingsStore({ file, keys, io }) {
     const next = normalizeSettings({ ...previous, ...patch });
     if (initialized) next.apiKeys = keys.migrate(next.apiKeys);
     // A removed/edited personal memory must disappear from the recovery backup too.
-    const removedMemory = previous.memories.some((m) => !next.memories.includes(m));
+    const removedMemory = previous.memories.some((m) => !next.memories.includes(m))
+      || previous.projects.some((p) => !next.projects.some((n) => n.id === p.id)
+        || p.memories.some((m) => !next.projects.find((n) => n.id === p.id)?.memories.includes(m)));
     const result = store.write(next, { discardBackupHistory: removedMemory });
     migrationError = null;
     return result;

@@ -1,4 +1,5 @@
 'use strict';
+const { UUID } = require('./workspace-settings');
 
 const MAX_MESSAGES = 60;
 const MAX_CONTENT = 6000;
@@ -21,7 +22,14 @@ function normalizeHistory(history) {
 
 function normalizeMemory(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid memory');
-  return { history: normalizeHistory(value.history ?? []), claude: value.claude ?? null };
+  const projectHistory = {};
+  if (value.projectHistory !== undefined && (!value.projectHistory || typeof value.projectHistory !== 'object'
+    || Array.isArray(value.projectHistory))) throw new Error('Invalid project history');
+  for (const [id, history] of Object.entries(value.projectHistory || {}).slice(-20)) {
+    if (UUID.test(id)) projectHistory[id] = normalizeHistory(history);
+  }
+  const claudeScope = typeof value.claudeScope === 'string' && UUID.test(value.claudeScope) ? value.claudeScope : '';
+  return { history: normalizeHistory(value.history ?? []), claude: value.claude ?? null, claudeScope, projectHistory };
 }
 
 module.exports = { normalizeHistory, normalizeMemory };

@@ -10,6 +10,11 @@
 Dans le chat : `aide`, `que sais-tu de moi ?`, `agrandis Firefox` ou `réduis kitty`.
 Le contrôle des fenêtres ne réalise pas encore de clics ni de saisie dans les applications.
 
+**Projets et routines :** **Mes projets** sépare les souvenirs et les conversations
+de chaque projet tout en conservant les préférences générales. **Routines Hyprland**
+prépare tes applications sur les espaces choisis après un aperçu et une confirmation.
+Dans le chat : `mes projets`, `routines` ou `prépare mon espace dev`.
+
 Capri, le construct du *Project Capricorn* (Cyberpunk: Edgerunners, saison 2), vit sur ton bureau
 et te raconte ce que fait ton IA de code, **Claude Code**, **Codex** ou **Antigravity** : elle se téléporte,
 glitche, commente chaque action, vient te chercher quand elle attend ta permission et part en vrille quand la tâche est finie.

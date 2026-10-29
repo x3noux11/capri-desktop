@@ -31,6 +31,15 @@ npm run test:hooks
 npm run test:linux
 ```
 
+`tests/workspaces.test.js` vérifie les projets, l’isolation du contexte, la
+validation des routines et les dispatchers Hyprland simulés : déplacement d’une
+fenêtre existante, lancement d’une application installée, plan périmé, application
+manquante, échec partiel et confirmation. Le test graphique couvre aussi la
+création/suppression de projets, l’isolation des conversations, la suppression des
+sauvegardes, l’édition d’une routine et son annulation avant exécution.
+Un test simule aussi un rendu qui saute toute la fin de l’introduction : son
+expiration doit débloquer le personnage et la visite guidée.
+
 Les tests Hyprland simulent les réponses du compositeur et le passage du temps.
 Ils vérifient les espaces de travail, les pannes, les réponses invalides, la
 reconnexion, les requêtes lentes et l’arrêt du suivi avec une requête en cours.

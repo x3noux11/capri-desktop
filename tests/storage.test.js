@@ -343,3 +343,17 @@ test('editing or deleting a personal memory clears its old value from the recove
   store.save({ memories: [] });
   for (const target of [file, `${file}.bak`]) assert.deepEqual(JSON.parse(fs.readFileSync(target)).memories, []);
 });
+
+test('project memory deletion also purges its recovery copy while keeping other projects', (t) => {
+  const { file } = temporary(t);
+  const { store } = settings(file);
+  store.initializeKeys();
+  const a = { id: randomUUID(), name: 'A', memories: ['private A'] };
+  const b = { id: randomUUID(), name: 'B', memories: ['keep B'] };
+  store.save({ projects: [a, b], activeProject: a.id });
+  store.save({ projects: [b], activeProject: '' });
+  for (const target of [file, `${file}.bak`]) {
+    assert.doesNotMatch(fs.readFileSync(target, 'utf8'), /private A/);
+    assert.deepEqual(JSON.parse(fs.readFileSync(target)).projects, [b]);
+  }
+});
