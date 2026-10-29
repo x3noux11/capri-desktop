@@ -9,6 +9,7 @@ import { pick, fmt } from './util.js';
 import { ASSISTANT_NAMES } from './lines.js';
 import { parseReminder, parseWhen, clock } from './reminders.js';
 import { unavailable, featureMessage } from './availability.js';
+import { localCommand } from './companion.js';
 
 const REMEMBER = 20; // messages she has in mind when answering
 const KEEP = 60;     // messages she remembers across restarts (memory.json)
@@ -306,6 +307,30 @@ export class Chat {
 
   async send(text) {
     if (this.turn || !this.open) return;
+    const command = localCommand(text);
+    if (command && this.companion) {
+      this.companion.open(command.kind === 'window' ? 'windows' : command.kind, command);
+      return;
+    }
+    // Personal facts are saved locally and acknowledged only after persistence succeeds.
+    // They do not need a model round trip, and work with the Claude provider too.
+    const personal = this.asked(text);
+    if (['memo', 'name'].includes(personal?.kind)) {
+      const id = Date.now();
+      this.turn = id;
+      this.panel.setActions([]);
+      this.panel.setChatBusy(true);
+      try {
+        const done = await this.doNow(personal);
+        if (!this.open || this.turn !== id) return;
+        this.history.push({ role: 'user', content: text });
+        this.remember({ role: 'assistant', content: done.line });
+        this.panel.stream(done.line, { done: true });
+        this.panel.setFace(done.face);
+      } catch { if (this.open && this.turn === id) this.panel.stream(this.t.failed, { done: true }); }
+      finally { if (this.turn === id) { this.turn = 0; this.panel.setChatBusy(false); } }
+      return;
+    }
     const id = Date.now();
     this.turn = id;
     this.answer = '';
@@ -356,7 +381,7 @@ export class Chat {
       else this.history.splice(at, 0, { role: 'assistant', content: this.opening });
       this.opening = null;
     }
-    const messages = [{ role: 'system', content: this.persona() }, ...this.history.slice(-REMEMBER)];
+    const messages = [{ role: 'system', content: this.persona() }, ...contextHistory(this.history)];
     // Her mood (angry, sulking…) and her language, said again right by your message, for this answer
     // only. Small local models mostly go by the last thing they read: up in her prompt alone, they
     // forget it (and answer in English after a conversation in English).
@@ -519,13 +544,16 @@ export class Chat {
       return { line: fmt(r.text ? tr.set : tr.setBare, { time: clock(r.at, this.brain.lang), text: r.text }), face: 'smug', reminder: r.id };
     }
     if (asked.kind === 'name') {
-      custom.userName = asked.name; // her answer, being written now, already knows it
-      this.host.setConfig({ userName: asked.name });
+      const saved = await this.host.setConfig({ userName: asked.name });
+      if (saved.saveError) return { line: t.failed, face: 'aside' };
+      custom.userName = saved.userName;
       return { line: fmt(this.brain.t.custom.named, { name: asked.name }), face: 'laugh' };
     }
     if (asked.kind === 'memo') {
-      custom.memories = [...(custom.memories || []).filter((m) => m !== asked.text), asked.text].slice(-MEMORIES_MAX);
-      this.host.setConfig({ memories: custom.memories });
+      const memories = [...(custom.memories || []).filter((m) => m !== asked.text), asked.text].slice(-MEMORIES_MAX);
+      const saved = await this.host.setConfig({ memories });
+      if (saved.saveError) return { line: t.failed, face: 'aside' };
+      custom.memories = saved.memories;
       return { line: this.brain.t.custom.remembered, face: 'smug' };
     }
     if (asked.kind === 'media') {
@@ -902,6 +930,18 @@ export class Chat {
       lang.last,
     ].join('\n');
   }
+}
+
+// Bound prompt size as well as message count, especially for small local models.
+export function contextHistory(history, budget = 16000) {
+  const result = [];
+  for (const message of history.slice(-REMEMBER).reverse()) {
+    if (budget <= 0) break;
+    const content = String(message.content).slice(0, budget);
+    result.push({ role: message.role, content });
+    budget -= content.length;
+  }
+  return result.reverse();
 }
 
 // The model's answer as she'd say it: no reasoning block, no markdown marks.

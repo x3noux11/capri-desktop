@@ -14,6 +14,19 @@ npm ci
 npm start
 ```
 
+Pour les captures, les applications et le multimédia :
+
+```sh
+sudo pacman -S --needed grim glib2 playerctl wireplumber wl-clipboard
+```
+
+`grim` capture le moniteur Wayland choisi ; `gio` (glib2) ouvre les applications,
+`playerctl` pilote les lecteurs MPRIS, `wpctl` (wireplumber) règle le volume et
+`wl-clipboard` fournit la sélection pour `--ask-selection`. Ces outils sont facultatifs :
+le diagnostic signale les fonctions indisponibles. Le chat local nécessite Ollama,
+par exemple `sudo pacman -S ollama`, puis `sudo systemctl enable --now ollama` et
+le choix/téléchargement d’un modèle dans le menu de Capri.
+
 Lancer depuis un terminal **dans la session Hyprland** : `DISPLAY` et
 `HYPRLAND_INSTANCE_SIGNATURE` doivent être hérités. `hyprctl` est fourni par
 Hyprland. Aucun accès root n'est nécessaire pour lancer Capri.
@@ -38,7 +51,20 @@ lancer `squashfs-root/AppRun`, ou utiliser l'archive `tar.gz` et son exécutable
 ## Configuration Hyprland
 
 Ajouter une règle pour que le gestionnaire de fenêtres ne transforme pas l'overlay
-plein écran en fenêtre carrelée. Syntaxe des versions récentes de Hyprland :
+plein écran en fenêtre carrelée. Vérifie ta version avec `hyprctl version`.
+
+Avec une configuration **Lua**, copier [capri.hyprland.lua](capri.hyprland.lua)
+dans `~/.config/hypr/`, puis ajouter à `hyprland.lua` :
+
+```lua
+dofile(os.getenv("HOME") .. "/.config/hypr/capri.hyprland.lua")
+```
+
+Ce fichier fournit la règle d’overlay et des raccourcis facultatifs ; remplacer
+`capri` par le chemin réel de l’exécutable ou de l’AppImage si nécessaire.
+
+Avec une configuration **hyprlang** (`hyprland.conf`, par exemple Hyprland 0.54),
+utiliser :
 
 ```ini
 windowrule {
@@ -68,6 +94,68 @@ Une barre avec module de tray (par exemple Waybar avec `tray`) permet d'accéder
 menu. Le clic droit sur Capri ouvre également son menu. Sous Hyprland, un raccourci
 peut être réservé au compositeur : utiliser le menu si Ctrl+Alt+C ne fonctionne pas.
 Ollama est facultatif et doit être installé/démarré séparément pour le chat local.
+
+### Commandes, mémoire et démarrage
+
+Le menu propose **Prise en main**, **Ma mémoire**, **Interagir avec une fenêtre**
+et **Économiser les ressources**. Ces panneaux locaux fonctionnent sans modèle IA.
+La visite se présente au premier démarrage et reste accessible ensuite.
+
+Capri étant lancée, les commandes suivantes ouvrent directement les panneaux :
+
+```sh
+capri --guide
+capri --memory
+capri --windows
+capri --talk
+```
+
+Exemples facultatifs pour `hyprland.conf` (adapter le chemin de `capri`) :
+
+```ini
+bind = SUPER SHIFT, C, exec, capri --talk
+bind = SUPER SHIFT, M, exec, capri --memory
+bind = SUPER SHIFT, W, exec, capri --windows
+bind = SUPER SHIFT, R, togglespecialworkspace, capri-minimized
+exec-once = capri
+```
+
+Le dernier raccourci permet de retrouver les fenêtres réduites même après avoir
+quitté Capri. `exec-once` est facultatif et reste sous ton contrôle ; Capri ne
+modifie pas ta configuration Hyprland.
+
+### Agir sur une fenêtre
+
+Choisir **Interagir avec une fenêtre**, puis l’application et l’identifiant de
+la fenêtre : **Mettre devant**, **Réduire**, **Agrandir** ou **Restaurer**.
+Dans le chat, `agrandis Firefox` ou `réduis kitty` ouvre le même sélecteur.
+Chaque action attend un clic **Confirmer**, puis la fenêtre est vérifiée à nouveau.
+Une fenêtre fermée ou remplacée entre-temps ne reçoit pas l’action.
+
+Sous Hyprland, réduire déplace la fenêtre vers `special:capri-minimized`.
+Restaurer ou mettre devant la ramène sur son espace d’origine ; après un redémarrage
+de Capri, elle revient sur l’espace courant. Agrandir utilise l’état maximisé du
+compositeur, sans forcer le plein écran. Les dispatchers Lua sont utilisés en
+priorité, avec repli vers les dispatchers hyprlang pour les versions précédentes.
+Les titres et contenus des fenêtres ne sont pas transmis au modèle. Le contrôle
+ne simule pas encore de clics ou de saisie dans les autres applications.
+
+### Mémoire et ressources
+
+**Ma mémoire** affiche jusqu’à 30 souvenirs durables : ajouter, modifier,
+supprimer un souvenir, tout effacer ou effacer séparément les conversations.
+Les modifications prennent effet dans les prochains échanges. Les souvenirs et
+le contexte récent sont transmis au fournisseur choisi pour le chat, local ou en
+ligne. Les fichiers restent dans le dossier `userData` d’Electron (sous le dossier
+de configuration XDG). Une suppression purge aussi la sauvegarde `.bak` ; les
+fichiers `.corrupt-*` préservés pour récupération manuelle restent à gérer séparément.
+
+L’historique conservé est borné à 60 messages et 48 000 caractères ; le contexte
+conversationnel envoyé au modèle est limité à 20 messages et 16 000 caractères.
+**Économiser les ressources** passe les dessins au repos de 12 à 6 par seconde
+et la lecture du pointeur Hyprland de 20 à 10 fois par seconde. Les séquences
+d’action gardent leur cadence. Le suivi des fenêtres s’arrête quand l’overlay est
+masqué, notamment pendant le verrouillage ; il reprend lorsque l’overlay revient.
 
 Pour conserver une clé API entre les lancements, un trousseau GNOME/libsecret ou
 KWallet doit être disponible et déverrouillé. Sinon Capri utilise la clé uniquement
@@ -108,8 +196,10 @@ reste inconnue : vérifier le module Waybar si l’icône manque.
 - Autres bureaux Linux : overlay disponible sous X11/XWayland, sans suivi des fenêtres.
 - Recherche de fichiers : parcours des dossiers personnels, sans Windows Search.
 - Ouverture des dossiers et fichiers : associations du bureau via Electron.
-- Catalogue d'applications installées, fermeture d'applications, touches multimédia,
-  détection des jeux et périphériques USB : intégrations Windows seulement.
+- Hyprland : catalogue des applications via les fichiers `.desktop` et `gio`,
+  fermeture d’applications, contrôle ciblé des fenêtres et détection des jeux.
+- Multimédia Linux : `playerctl` et `wpctl`. La détection des périphériques USB
+  et des autres IA reste réservée à Windows.
 - Captures d'écran : sous Wayland, permissions et sélection peuvent dépendre du
   portail (`xdg-desktop-portal-hyprland`, PipeWire) et de la version d'Electron.
 - L'ordre d'occlusion des fenêtres et les applications plein écran peuvent limiter

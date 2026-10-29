@@ -124,6 +124,9 @@ TEXT.ru.reasons = {
 };
 TEXT.ru.trayNote = 'Видимость значка не подтверждена. В Hyprland проверь модуль tray в Waybar. Правый щелчок по Capri тоже открывает меню.';
 
+for (const [lang, label] of Object.entries({ fr: 'Contrôle des fenêtres', en: 'Window controls', es: 'Control de ventanas',
+  pt: 'Controle de janelas', ru: 'Управление окнами' })) TEXT[lang].features.windowControl = label;
+
 function platformText(lang) { return TEXT[lang] || TEXT.en; }
 
 module.exports = { platformText };

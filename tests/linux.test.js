@@ -46,6 +46,25 @@ test('poll publishes a snapshot, refreshes its origin and stops', async () => {
   assert.equal(updates.length, 2);
 });
 
+test('hidden overlays stop compositor polling and resume when shown', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  let visible = false;
+  let reads = 0;
+  const updates = [];
+  const watch = startWindowWatch({ overlay: { isDestroyed: () => false, isVisible: () => visible, getBounds: () => bounds },
+    onUpdate: (data) => updates.push(data), every: 500,
+    read: async (key) => { reads++; return ({ clients: [client], monitors, activewindow: client })[key]; } });
+  t.after(() => watch.stop());
+  t.mock.timers.tick(1000);
+  await flushPoll();
+  assert.equal(reads, 0);
+  visible = true;
+  t.mock.timers.tick(500);
+  await flushPoll();
+  assert.equal(reads, 3);
+  assert.equal(updates.length, 1);
+});
+
 const flushPoll = () => new Promise((resolve) => setImmediate(resolve));
 
 function watchHarness(t, read) {

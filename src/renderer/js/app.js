@@ -9,6 +9,7 @@ import { Mission } from './mission.js';
 import { Chat } from './chat.js';
 import { Setup } from './setup.js';
 import { Custom } from './custom.js';
+import { Companion } from './companion.js';
 import { Bond, Jealousy } from './bond.js';
 import { Reminders, clock } from './reminders.js';
 import { Look } from './look.js';
@@ -100,6 +101,7 @@ async function boot() {
     voice,
   });
   capri.wander = config.wander;
+  capri.lowPower = chip.lowPower = mask.lowPower = config.lowPower;
   capri.possessWindows = config.possess && !unavailable({ system: config.system }, 'windowTracking');
   capri.restOn = unavailable({ system: config.system }, 'taskbarRest') ? 'corner' : config.rest || 'corner';
   capri.setView(innerWidth, innerHeight, innerHeight - floorGap);
@@ -259,6 +261,8 @@ async function boot() {
   const custom = new Custom({ guide, host, brain, capri, voice });
   guide.custom = custom;
   brain.custom = mine(config);
+  const companion = new Companion({ guide, host, brain, chat });
+  chat.companion = companion;
 
   // How close she is to you (bond.js), her jealousy of your other AIs, the reminders she keeps.
   const bond = new Bond({ host, data: config.bond });
@@ -627,6 +631,7 @@ async function boot() {
     wantsOut = cfg.visible !== false;
     reminders.sync(cfg.reminders); // one may have been cancelled from her menu
     capri.wander = cfg.wander;
+    capri.lowPower = chip.lowPower = mask.lowPower = cfg.lowPower;
     capri.possessWindows = cfg.possess && !unavailable(brain, 'windowTracking');
     capri.restOn = unavailable(brain, 'taskbarRest') ? 'corner' : cfg.rest || 'corner';
     applyMotion(cfg.motion);
@@ -656,6 +661,15 @@ async function boot() {
   host.onCommand(async (cmd) => {
     const t = brain.t;
     switch (cmd.name) {
+      case 'companionTour':
+        companion.open('tour');
+        break;
+      case 'memoryPanel':
+        companion.open('memory');
+        break;
+      case 'windowPanel':
+        companion.open('windows');
+        break;
       case 'teleport':
         capri.teleport(capri.spot('random'));
         break;
@@ -728,6 +742,9 @@ async function boot() {
         guide.menu();
         break;
       case 'forget': // "Forget our conversations" in her menu, maybe with her chat open
+        if (chat.turn) host.chatStop(chat.turn);
+        chat.turn = 0;
+        panel.setChatBusy(false);
         chat.history = [];
         break;
       case 'chat': // "Talk to her" in her menu
@@ -845,7 +862,8 @@ async function boot() {
   }
   const hooks = await host.hooksStatus();
   // her welcome: the first time, or while she's meant to watch Claude Code and isn't plugged into it
-  if (!config.welcomed || (config.claude && !hooks.installed)) guide.welcome();
+  if (!config.companionTour) companion.open('tour');
+  else if (!config.welcomed || (config.claude && !hooks.installed)) guide.welcome();
   else panel.say({ kind: 'info', line: brain.onlineLine(), hold: 4000 });
 
   // In the evening, after a real day's work, she brings you her report card once, on her own,

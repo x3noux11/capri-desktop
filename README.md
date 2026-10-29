@@ -2,6 +2,13 @@
 
 # Capri
 
+The menu now includes **Getting started**, **My memory** (add, edit and delete
+lasting facts), **Interact with a window** (Windows and Hyprland; confirmation
+required), and **Save resources**. Chat shortcuts include `help`, `what do you
+remember?`, `maximize Firefox` and `minimize kitty`. Window controls do not yet
+click or type inside other applications. See the [CachyOS / Hyprland guide](docs/linux/README.fr.md)
+for dependencies, Lua/hyprlang rules and keyboard shortcuts.
+
 **Linux / CachyOS / Hyprland:** [setup, compositor rules and limitations (French)](docs/linux/README.fr.md).
 
 Capri, the *Project Capricorn* construct from Cyberpunk: Edgerunners season 2, lives on your desktop

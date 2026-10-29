@@ -82,7 +82,7 @@ async function inspectPlatform({ platform = process.platform, env = process.env,
   return {
     schemaVersion: 1, platform, distribution, session, backend: linux ? backend : 'native', checks,
     features: {
-      overlay, windowTracking: tracking, screenCapture: capture,
+      overlay, windowTracking: tracking, windowControl: tracking, screenCapture: capture,
       appCatalog: windows || (hyprland && exists('gio')) ? supported() : unavailable('windowsOnly'),
       closeApps: windows || (hyprland && checks.hyprctl === 'responding') ? supported() : unavailable('windowsOnly'),
       media: windows || (linux && exists('playerctl') && exists('wpctl')) ? supported() : unavailable('windowsOnly'),

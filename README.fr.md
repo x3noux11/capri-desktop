@@ -4,6 +4,12 @@
 
 **Linux / CachyOS / Hyprland :** [installation, configuration et limites](docs/linux/README.fr.md).
 
+**Nouveaux contrôles :** le menu propose **Prise en main**, **Ma mémoire**
+(ajout, correction et suppression des souvenirs), **Interagir avec une fenêtre**
+(Windows et Hyprland, après confirmation) et **Économiser les ressources**.
+Dans le chat : `aide`, `que sais-tu de moi ?`, `agrandis Firefox` ou `réduis kitty`.
+Le contrôle des fenêtres ne réalise pas encore de clics ni de saisie dans les applications.
+
 Capri, le construct du *Project Capricorn* (Cyberpunk: Edgerunners, saison 2), vit sur ton bureau
 et te raconte ce que fait ton IA de code, **Claude Code**, **Codex** ou **Antigravity** : elle se téléporte,
 glitche, commente chaque action, vient te chercher quand elle attend ta permission et part en vrille quand la tâche est finie.

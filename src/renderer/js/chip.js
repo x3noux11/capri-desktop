@@ -51,10 +51,12 @@ class Small {
     this.visible = true;
     this.canvas.hidden = false;
     this.shownAt = performance.now();
-    requestAnimationFrame(this.loop);
+    this.frameRequest = requestAnimationFrame(this.loop);
   }
 
   hide() {
+    clearTimeout(this.frameTimer);
+    cancelAnimationFrame(this.frameRequest);
     this.visible = false;
     this.canvas.hidden = true;
     this.pointer = null;
@@ -62,13 +64,17 @@ class Small {
 
   loop(now) {
     if (!this.visible) return;
-    requestAnimationFrame(this.loop);
-    if (now - this.last < STEP - 1) return;
-    this.last = now;
-    const dpr = window.devicePixelRatio || 1;
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.ctx.clearRect(0, 0, this.w, this.h);
-    this.draw(now, Math.floor(now / STEP));
+    const step = this.lowPower && !this.pointer ? STEP * 2 : STEP;
+    if (now - this.last >= step - 1) {
+      this.last = now;
+      const dpr = window.devicePixelRatio || 1;
+      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.ctx.clearRect(0, 0, this.w, this.h);
+      this.draw(now, Math.floor(now / STEP));
+    }
+    this.frameTimer = setTimeout(() => {
+      this.frameRequest = requestAnimationFrame(this.loop);
+    }, Math.max(0, step - (performance.now() - this.last) - 5));
   }
 
   // it lands as a white silhouette, one drawing, like her impact frames

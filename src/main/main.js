@@ -23,6 +23,8 @@ const { inspectPlatform } = require('./platform');
 const { platformText } = require('./platform-labels');
 const { storageText } = require('./storage-labels');
 const { createJsonStore } = require('./json-store');
+const { normalizeHistory, normalizeMemory } = require('./chat-memory');
+const windowControl = require('./window-control').createWindowControl();
 const apps = require('./apps');
 const launch = require('./launch');
 const files = require('./files');
@@ -74,12 +76,7 @@ const userSoundsDir = () => path.join(app.getPath('userData'), 'sounds');
 
 // Her memory of your chats, across restarts: { history: [{ role, content }], claude: Claude Code's session }
 const memoryFile = () => path.join(app.getPath('userData'), 'memory.json');
-const memoryStore = createJsonStore({ file: memoryFile, defaults: { history: [], claude: null }, normalize(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || (value.history && !Array.isArray(value.history))) {
-    throw new Error('Invalid memory');
-  }
-  return value;
-} });
+const memoryStore = createJsonStore({ file: memoryFile, defaults: { history: [], claude: null }, normalize: normalizeMemory });
 function readMemory() { return memoryStore.load(); }
 function saveMemory(patch, options) {
   try {
@@ -106,9 +103,11 @@ function saveConfig(patch, renderer = false) {
   }
 }
 function forgetChats() {
-  if (!saveMemory({ history: [], claude: null }, { discardBackupHistory: true })) return;
+  if (!saveMemory({ history: [], claude: null }, { discardBackupHistory: true })) return false;
+  for (const abort of chats.values()) abort.abort();
   llm.resetClaude();
   sendCommand('forget');
+  return true;
 }
 
 // capri://app/...        -> files of this repo
@@ -239,7 +238,8 @@ function startPointer() {
         const key = p ? `${p.x},${p.y}` : '';
         if (p && key !== last) overlay.webContents.send('overlay:pointer', { x: p.x, y: p.y, inside: p.inside });
         last = key;
-        next = !p?.inside ? 250 : config.load().visible === false ? 120 : 50;
+        const cfg = config.load();
+        next = !p?.inside ? 250 : cfg.visible === false ? 120 : cfg.lowPower ? 100 : 50;
       } catch { next = 500; /* Hyprland busy or restarting: again in a moment */ }
     }
     pointerTimer = setTimeout(tick, next);
@@ -517,6 +517,13 @@ function rebuildTray() {
   const menu = Menu.buildFromTemplate([
     { label: t.online(PORT), enabled: false },
     { label: t.sync(Math.min(100, Math.floor(xp / 10)), t.stages[stage]), enabled: false },
+    { type: 'separator' },
+    { label: resolveLang(cfg.lang) === 'fr' ? 'Prise en main' : 'Getting started', click: () => sendCommand('companionTour') },
+    { label: resolveLang(cfg.lang) === 'fr' ? 'Ma mémoire' : 'My memory', click: () => sendCommand('memoryPanel') },
+    { label: resolveLang(cfg.lang) === 'fr' ? 'Interagir avec une fenêtre' : 'Interact with a window',
+      enabled: windowControl.supported && featureAvailable('windowControl'), click: () => sendCommand('windowPanel') },
+    { label: resolveLang(cfg.lang) === 'fr' ? 'Économiser les ressources' : 'Save resources',
+      type: 'checkbox', checked: cfg.lowPower, click: (item) => updateConfig({ lowPower: item.checked }) },
     { type: 'separator' },
     { label: t.teleport, click: () => sendCommand('teleport') },
     { label: t.satellite, click: () => sendCommand('satellite') },
@@ -962,7 +969,7 @@ function registerIpc() {
       };
       const cfg = config.load();
       const text = await chatWithFallback(cfg, messages, send, abort.signal, () => streamed);
-      if (cfg.provider === 'claude') saveMemory({ claude: llm.claudeMemory() });
+      if (cfg.provider === 'claude' && !abort.signal.aborted) saveMemory({ claude: llm.claudeMemory() });
       return { ok: true, text };
     } catch (err) {
       return { ok: false, error: abort.signal.aborted ? 'stopped' : err.message, code: err.code || null };
@@ -1005,7 +1012,8 @@ function registerIpc() {
     return { local: llm.isLocal(cfg.provider, cfg, model), provider, model };
   });
   ipcMain.handle('chat:memory', () => readMemory().history || []);
-  ipcMain.on('chat:remember', (_e, history) => Array.isArray(history) && saveMemory({ history }));
+  ipcMain.on('chat:remember', (_e, history) => Array.isArray(history) && saveMemory({ history: normalizeHistory(history) }));
+  ipcMain.handle('chat:forget', () => forgetChats());
   ipcMain.on('chat:ollama', () => shell.openExternal(OLLAMA_SITE));
   // setting her up with buttons (setup.js): Ollama and a model, or a key, or an address
   const progress = (payload) => overlay?.webContents.send('setup:progress', payload);
@@ -1129,6 +1137,13 @@ function registerIpc() {
   });
   // "Take me there": Claude's window, where it waits for you (Hyprland)
   ipcMain.handle('window:focus', (_e, address) => (hypr ? hypr.focusWindow(address).catch(() => false) : false));
+  ipcMain.handle('window:list', () => windowControl.list().catch(() => []));
+  ipcMain.handle('window:act', (_e, { target, action } = {}) => windowControl.act(target, action));
+  ipcMain.handle('overlay:release', async () => {
+    if (hypr?.placed) await hypr.focus(false);
+    else if (overlay && !overlay.isDestroyed()) { overlay.setFocusable(false); overlay.blur(); }
+    return true;
+  });
   // her report card's copy button: a picture of that part of the overlay, on the clipboard
   ipcMain.handle('panel:copy', async (_e, rect) => {
     const image = await overlay.webContents.capturePage(rect);
@@ -1301,6 +1316,9 @@ function main() {
   app.on('second-instance', (_e, argv) => {
     if (argv.includes('--ask-selection')) askSelection();
     else if (argv.includes('--talk')) sendCommand('talk');
+    else if (argv.includes('--memory')) sendCommand('memoryPanel');
+    else if (argv.includes('--windows')) sendCommand('windowPanel');
+    else if (argv.includes('--guide')) sendCommand('companionTour');
     else if (argv.includes('--toggle')) toggleVisible();
     else sendCommand('status');
   });

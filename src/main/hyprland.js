@@ -164,7 +164,7 @@ function startWindowWatch({ overlay, onUpdate, read = query, events = read === q
     if (serialized !== previous) { previous = serialized; onUpdate(data); }
   }
   async function poll() {
-    if (stopped || busy) return;
+    if (stopped || busy || overlay.isDestroyed() || overlay.isVisible?.() === false) return;
     busy = true;
     try {
       last = await Promise.all(['clients', 'monitors', 'activewindow'].map(read));
@@ -381,4 +381,4 @@ function lockerRunning(read = (p) => fs.readFileSync(p, 'utf8'), list = () => fs
 }
 const screensOff = (monitors) => Array.isArray(monitors) && monitors.length > 0 && monitors.every((m) => m.dpmsStatus === false);
 
-module.exports = { request, query, lockerRunning, screensOff, snapshot, startWindowWatch, createHyprland, watchEvents, monitorFor, logical, socketPath, gameOf };
+module.exports = { request, query, dispatch, lockerRunning, screensOff, snapshot, startWindowWatch, createHyprland, watchEvents, monitorFor, logical, socketPath, gameOf };

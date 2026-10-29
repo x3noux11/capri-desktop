@@ -50,9 +50,12 @@ function createSettingsStore({ file, keys, io }) {
   function save(patch) {
     if (!initialized) throw Object.assign(new Error('Key storage is not initialized'), { code: 'EKEYSNOTREADY' });
     if (!record(patch)) throw new Error('Invalid settings patch');
-    const next = normalizeSettings({ ...store.load(), ...patch });
+    const previous = store.load();
+    const next = normalizeSettings({ ...previous, ...patch });
     if (initialized) next.apiKeys = keys.migrate(next.apiKeys);
-    const result = store.write(next);
+    // A removed/edited personal memory must disappear from the recovery backup too.
+    const removedMemory = previous.memories.some((m) => !next.memories.includes(m));
+    const result = store.write(next, { discardBackupHistory: removedMemory });
     migrationError = null;
     return result;
   }

@@ -38,6 +38,7 @@ async function main() {
   // XDG_CONFIG_HOME isolates Electron userData. An explicit Chromium profile also
   // prevents the single-instance lock from attaching to a running user instance.
   const child = spawn(electron, [ROOT, '--dev', `--user-data-dir=${path.join(profile, 'chromium')}`,
+    ...(process.env.CAPRI_SMOKE_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
     '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--password-store=basic'], {
     cwd: ROOT,
     env: { ...process.env, CAPRI_PORT: String(port), XDG_CONFIG_HOME: profile,
@@ -120,6 +121,40 @@ async function main() {
     const explanation = await evaluate('window.dev.chat.doNow({kind: "media", action: "pause"})');
     assert.ok(explanation.line.includes(cfg.system.text.reasons.windowsOnly), 'chat explains unavailable Linux actions');
 
+    // Exercise the actual local panels, without a model: onboarding, edit, delete and history erasure.
+    await waitFor(() => evaluate('window.dev.guide.running && window.dev.panel.current?.badge === "1 / 4"'), 'the first-run tour');
+    for (let step = 1; step <= 4; step++) {
+      await waitFor(() => evaluate(`window.dev.panel.current?.badge === "${step} / 4"`), `tour step ${step}`);
+      await evaluate('document.querySelector(\'.panel__action[data-id="next"]\').click()');
+    }
+    await waitFor(() => evaluate('!window.dev.guide.running'), 'the tour to finish');
+    assert.equal((await evaluate('window.host.getConfig()')).companionTour, true);
+    await evaluate('window.host.setConfig({memories: ["CachyOS test preference"], lowPower: true})');
+    await request('debug/command', { name: 'memoryPanel' });
+    await waitFor(() => evaluate('window.dev.panel.current?.quote?.includes("CachyOS test preference")'), 'the saved memory panel');
+    await evaluate('document.querySelector(\'.panel__action[data-id="item:0"]\').click()');
+    await waitFor(() => evaluate('window.dev.panel.current?.chat && window.dev.panel.current?.guide'), 'the memory editor');
+    await evaluate(`(() => {
+      const p = window.dev.panel;
+      p.chatInput.value = 'Corrected CachyOS preference';
+      p.chatForm.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+    })()`);
+    await waitFor(() => evaluate('window.dev.panel.current?.quote?.includes("Corrected CachyOS preference")'), 'the corrected memory');
+    assert.deepEqual((await evaluate('window.host.getConfig()')).memories, ['Corrected CachyOS preference']);
+    await evaluate('document.querySelector(\'.panel__action[data-id="item:0"]\').click()');
+    await waitFor(() => evaluate('Boolean(document.querySelector(\'.panel__action[data-id="remove"]\'))'), 'the delete-memory button');
+    await evaluate('document.querySelector(\'.panel__action[data-id="remove"]\').click()');
+    await waitFor(() => evaluate('window.dev.panel.current?.line?.includes("0 / 30")'), 'the empty memory list');
+    await evaluate('window.host.chatRemember([{role: "user", content: "synthetic private chat"}])');
+    await waitFor(() => evaluate('(async () => (await window.host.chatMemory()).length === 1)()'), 'a persisted chat');
+    await evaluate('document.querySelector(\'.panel__action[data-id="history"]\').click()');
+    await waitFor(() => evaluate('Boolean(document.querySelector(\'.panel__action[data-id="yes"]\'))'), 'history erasure confirmation');
+    await evaluate('document.querySelector(\'.panel__action[data-id="yes"]\').click()');
+    await waitFor(() => evaluate('(async () => (await window.host.chatMemory()).length === 0)()'), 'history erasure');
+    await evaluate('window.dev.panel.hide()');
+    await waitFor(() => evaluate('!window.dev.guide.running'), 'the memory panel to close');
+    assert.equal(await evaluate('window.dev.capri.lowPower'), true);
+
     // Only synthetic keys and a loopback fake provider are used. Force basic_text
     // to prove that Electron reporting encryption available cannot weaken policy.
     assert.equal(cfg.keyStorage.persistent, false);
@@ -170,7 +205,7 @@ async function main() {
       'the completed session to be removed');
     assert.equal(exited, false);
     assert.doesNotMatch(log.join(''), /\[capri\] boot failed|\[capri\] renderer gone/);
-    console.log(`Smoke test passed: Electron, WebGL (${renderer.width}×${renderer.height}), diagnostics, session-only keys, settings and hook delivery.`);
+    console.log(`Smoke test passed: Electron, WebGL (${renderer.width}×${renderer.height}), onboarding, memory CRUD, history erasure, power mode, diagnostics, session-only keys and hook delivery.`);
   } catch (err) {
     console.error(log.join(''));
     throw err;

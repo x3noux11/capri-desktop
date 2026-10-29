@@ -92,7 +92,8 @@ export class Custom {
 
   // Saved, and known right away (brain.custom), before the config comes back around.
   async save(patch) {
+    const result = await this.host.setConfig(patch);
+    if (result.saveError) throw new Error('Could not save preferences');
     Object.assign(this.brain.custom, patch);
-    await this.host.setConfig(patch);
   }
 }

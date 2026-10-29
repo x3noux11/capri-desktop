@@ -332,3 +332,14 @@ test('forgetting conversations clears both the current file and its recovery bac
   assert.deepEqual(JSON.parse(fs.readFileSync(file)).history, []);
   assert.deepEqual(JSON.parse(fs.readFileSync(`${file}.bak`)).history, []);
 });
+
+test('editing or deleting a personal memory clears its old value from the recovery backup', (t) => {
+  const { file } = temporary(t);
+  const { store } = settings(file);
+  store.initializeKeys();
+  store.save({ memories: ['obsolete preference', 'keep'] });
+  store.save({ memories: ['correct preference', 'keep'] });
+  for (const target of [file, `${file}.bak`]) assert.doesNotMatch(fs.readFileSync(target, 'utf8'), /obsolete preference/);
+  store.save({ memories: [] });
+  for (const target of [file, `${file}.bak`]) assert.deepEqual(JSON.parse(fs.readFileSync(target)).memories, []);
+});

@@ -363,7 +363,8 @@ html[data-motion='reduced'] .panel__bar {
 .panel.is-guide .panel__quote {
   display: block;
   -webkit-line-clamp: unset;
-  overflow: visible;
+  max-height: 35vh;
+  overflow: auto;
   white-space: pre-line; /* one idea per line */
 }
 

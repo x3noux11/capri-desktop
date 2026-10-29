@@ -413,15 +413,22 @@ export class Capri {
 
   interval() {
     if (this.busy || this.stance === 'fall' || SPUN.has(this.stance) || this.skid || this.act?.player.act.fps === 24) return ON_ONES;
+    if (this.lowPower && !this.act && this.mode === 'idle' && ['stand', 'sit'].includes(this.stance)) return ASLEEP;
     return this.mode === 'sleep' ? ASLEEP : ON_TWOS;
   }
 
   loop(now) {
-    requestAnimationFrame(this.loop);
-    if (this.hidden) return;
-    if (now - this.lastDraw < this.interval() - 1) return;
-    this.drawFrame(now);
-    this.behave(now);
+    if (!this.hidden && now - this.lastDraw >= this.interval() - 1) {
+      this.drawFrame(now);
+      this.behave(now);
+    }
+    // Wake near the next cel, rather than on every monitor refresh (up to 240 Hz).
+    // Hidden bodies need no animation frame; their chip/mask owns its own small canvas.
+    const wait = this.hidden ? 250 : Math.max(0, this.interval() - (performance.now() - this.lastDraw) - 5);
+    setTimeout(() => {
+      if (this.hidden) this.loop(performance.now());
+      else requestAnimationFrame(this.loop);
+    }, wait);
   }
 
   drawFrame(now = performance.now()) {
