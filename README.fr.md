@@ -8,7 +8,14 @@
 (ajout, correction et suppression des souvenirs), **Interagir avec une fenêtre**
 (Windows et Hyprland, après confirmation) et **Économiser les ressources**.
 Dans le chat : `aide`, `que sais-tu de moi ?`, `agrandis Firefox` ou `réduis kitty`.
-Le contrôle des fenêtres ne réalise pas encore de clics ni de saisie dans les applications.
+
+**Paramètres, voix et contrôle :** `capri --settings` ouvre une fenêtre dédiée avec
+12 onglets : connexions IA, voix cloud, mémoire recherchable, projets, routines
+visuelles, reprise et tâches, guidage et contrôle, concentration, apparence,
+performances et diagnostic. La palette s’ouvre avec `capri --palette` ou **Ctrl K**
+dans les paramètres. Le contrôle Hyprland peut maintenant cliquer, coller du texte
+et envoyer des raccourcis après un aperçu et une confirmation.
+Voir le [guide des paramètres et du mode vocal](docs/SETTINGS.fr.md).
 
 **Projets et routines :** **Mes projets** sépare les souvenirs et les conversations
 de chaque projet tout en conservant les préférences générales. **Routines Hyprland**

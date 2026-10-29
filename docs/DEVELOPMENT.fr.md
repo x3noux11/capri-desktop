@@ -17,7 +17,7 @@ autoriser l’écoute locale. Aucun modèle IA ni service distant n’est requis
 La suite `tests/platform.test.js` vérifie aussi la détection des capacités Linux,
 les réponses invalides des services, le contenu du diagnostic et les explications
 affichées lorsque des actions ne sont pas disponibles. Les services sont simulés :
-ces tests tournent également sur le runner Windows.
+ces tests peuvent aussi tourner sous Windows. La CI du projet utilise Linux.
 
 `tests/storage.test.js` couvre les écritures interrompues, les fichiers corrompus,
 les formats futurs et le stockage des clés avec ou sans trousseau sécurisé.
@@ -39,6 +39,13 @@ création/suppression de projets, l’isolation des conversations, la suppressio
 sauvegardes, l’édition d’une routine et son annulation avant exécution.
 Un test simule aussi un rendu qui saute toute la fin de l’introduction : son
 expiration doit débloquer le personnage et la visite guidée.
+
+`tests/studio.test.js` couvre les préférences des paramètres, les profils dérivés,
+l’import/export de souvenirs, les protocoles de transcription/synthèse/Realtime,
+les annulations réseau, les aperçus d’actions à usage unique et le respect du
+focus. Il vérifie aussi l’insertion Unicode et la restauration des formats du
+presse-papiers, sans écraser une nouvelle copie de l’utilisateur. Les fournisseurs
+cloud et l’entrée système y sont simulés ; aucun compte payant n’est appelé.
 
 Les tests Hyprland simulent les réponses du compositeur et le passage du temps.
 Ils vérifient les espaces de travail, les pannes, les réponses invalides, la
@@ -68,6 +75,17 @@ le menu et l’explication des commandes multimédias indisponibles dans le chat
 Un faux fournisseur local et une clé factice vérifient la conservation uniquement
 en mémoire sans trousseau sûr, ainsi que le maintien de la clé précédente si la
 validation d’un nouveau fournisseur échoue. Aucune clé réelle n’est nécessaire.
+
+La fenêtre de paramètres est aussi lancée : les 12 onglets, la recherche de
+souvenirs, les tâches, l’éditeur de routines avec glisser-déposer, la palette,
+le minuteur, l’apparence, les profils de performance et un chat streamé sont
+exercés avec leurs contrôles réels. Un périphérique audio Chromium simulé
+vérifie le démarrage et la libération du micro sans matériel ni appel cloud.
+Le presse-papiers Electron réel est vérifié pour le texte Unicode et la
+restauration du format HTML. `CAPRI_SMOKE_CAPTURE=1` enregistre une capture de
+la fenêtre dans `captures/settings.png` pour revue visuelle.
+Après compilation, `CAPRI_SMOKE_EXECUTABLE="$PWD/dist/linux-unpacked/capri"`
+permet d’exécuter la même suite avec l’application empaquetée.
 
 Le serveur X virtuel ne valide pas la transparence avec le compositeur, les clics
 à travers ou le multi-écran Hyprland. Pour ces essais, suivre le

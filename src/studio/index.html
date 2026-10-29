@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; media-src 'self' blob:; connect-src 'self' https://api.openai.com; object-src 'none'; base-uri 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Capri · Paramètres</title>
+  <link rel="stylesheet" href="studio.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#general"><img src="../../assets/capri/capri-face.png" alt=""><span>CAPRI<small>VOTRE ESPACE DE CONTRÔLE</small></span></a>
+    <nav id="navigation" aria-label="Paramètres"></nav>
+    <button id="palette-open" class="palette-open">Rechercher une commande <kbd>Ctrl K</kbd></button>
+    <div class="sidebar-footer"><span class="online-dot"></span> <span id="desktop-status">Linux</span><br><small>Vos réglages, sur votre machine.</small></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><div><p class="eyebrow">COMPAGNON DE BUREAU</p><h1 id="page-title">Bienvenue.</h1></div><label class="scope-picker">Projet actif<select id="scope" aria-label="Projet actif"></select></label></header>
+    <p id="status" role="status" aria-live="polite"></p>
+    <main id="content" tabindex="-1" aria-label="Contenu des paramètres"></main>
+    <footer class="footer">Capri · Projet de fan non commercial <span id="storage-status"></span></footer>
+  </div>
+  <dialog id="confirm"><form method="dialog"><p class="eyebrow">VÉRIFIER AVANT D’AGIR</p><h2 id="confirm-title"></h2><pre id="confirm-detail"></pre><div class="actions"><button value="cancel">Annuler</button><button class="primary" value="yes">Confirmer</button></div></form></dialog>
+  <dialog id="palette"><input id="palette-query" type="search" placeholder="Une action, un projet, une routine…" aria-label="Rechercher une commande"><div id="palette-list"></div><small>↑ ↓ pour naviguer · Entrée pour choisir · Échap pour fermer</small></dialog>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

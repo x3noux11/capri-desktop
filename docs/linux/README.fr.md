@@ -110,6 +110,9 @@ capri --windows
 capri --talk
 capri --projects
 capri --routines
+capri --settings
+capri --palette
+capri --voice
 ```
 
 Exemples facultatifs pour `hyprland.conf` (adapter le chemin de `capri`) :
@@ -120,6 +123,10 @@ bind = SUPER SHIFT, M, exec, capri --memory
 bind = SUPER SHIFT, W, exec, capri --windows
 bind = SUPER ALT, P, exec, capri --projects
 bind = SUPER ALT, R, exec, capri --routines
+bind = SUPER ALT, S, exec, capri --settings
+bind = SUPER ALT, SPACE, exec, capri --palette
+bind = SUPER ALT, V, exec, capri --voice
+bind = SUPER ALT, ESCAPE, exec, capri --stop-control
 bind = SUPER SHIFT, R, togglespecialworkspace, capri-minimized
 exec-once = capri
 ```
@@ -141,8 +148,12 @@ Restaurer ou mettre devant la ramène sur son espace d’origine ; après un red
 de Capri, elle revient sur l’espace courant. Agrandir utilise l’état maximisé du
 compositeur, sans forcer le plein écran. Les dispatchers Lua sont utilisés en
 priorité, avec repli vers les dispatchers hyprlang pour les versions précédentes.
-Les titres et contenus des fenêtres ne sont pas transmis au modèle. Le contrôle
-ne simule pas encore de clics ou de saisie dans les autres applications.
+Ce panneau n’envoie pas les titres ni les contenus au modèle. Le nouvel onglet
+**Paramètres → Guidage & contrôle** ajoute la capture ciblée, le guidage avec une
+IA de vision et les clics/saisies après aperçu. Les captures ne sont envoyées à
+l’IA que sur demande explicite. La saisie nécessite `ydotool` et un `ydotoold`
+configuré ; `grim` suffit pour la capture. Voir [le guide complet](../SETTINGS.fr.md)
+pour la voix cloud, les prérequis, l’arrêt et les limites du contrôle.
 
 ### Mémoire et ressources
 

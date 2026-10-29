@@ -302,6 +302,7 @@ export class Brain {
     const took = s.taskStart ? Date.now() - s.taskStart : 0;
     if (!evt.demo && wasWorking && took >= NOTIFY_AFTER_MS && (this.away(s) || this.capri.stowed)) {
       this.host.notify({
+        kind: 'task',
         title: fmt(this.t.notifyDone, { project: s.title || s.project }),
         body: [summary, clip(quote, 200)].filter(Boolean).join('\n'),
         window: s.window || '',

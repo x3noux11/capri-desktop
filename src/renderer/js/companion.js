@@ -43,6 +43,8 @@ export const companionText = (lang) => lang === 'fr' ? FR : EN;
 
 export function localCommand(text) {
   const s = text.trim().replace(/[.!?]+\s*$/, '').trim();
+  if (/^(?:param[eè]tres|settings|r[eé]glages)$/i.test(s)) return { kind: 'settingsPanel' };
+  if (/^(?:mode vocal|voice mode)$/i.test(s)) return { kind: 'voicePanel' };
   if (/^(?:mes projets|my projects|projects|projets)$/i.test(s)) return { kind: 'projectPanel' };
   if (/^(?:mes routines|routines|routines hyprland)$/i.test(s)) return { kind: 'routinePanel' };
   const routine = /^(?:pr[ée]pare (?:mon |l['’])?espace|lance la routine|run routine|prepare workspace)\s+(.{1,80})$/iu.exec(s);

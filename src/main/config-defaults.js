@@ -1,6 +1,7 @@
 'use strict';
 
 const DEFAULTS = {
+  ...require('./studio-settings').DEFAULTS,
   scale: 0.6,        // sprite scale, 0.6 ≈ 250px tall
   muted: false,
   volume: 0.7,

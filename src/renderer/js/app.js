@@ -113,6 +113,8 @@ async function boot() {
   applyRice(config.rice);
   const brain = new Brain({ capri, panel, voice, host, mission, lang: config.lang, assistant: config.assistant });
   brain.system = config.system;
+  document.documentElement.style.setProperty('--panel-opacity', String(config.appearance?.panelOpacity ?? 1));
+  fx.canvas.style.opacity = String(config.appearance?.effectIntensity ?? 1);
 
   // Click-through everywhere except on her body, the panel and her biochip.
   let interactive = false;
@@ -269,6 +271,8 @@ async function boot() {
   const workspaces = new Workspaces({ guide, host, brain, companion });
   companion.projectPanel = () => workspaces.projects();
   companion.routinePanel = (options) => workspaces.routines(options);
+  companion.settingsPanel = () => host.openSettings();
+  companion.voicePanel = () => host.openSettings('voice');
 
   // How close she is to you (bond.js), her jealousy of your other AIs, the reminders she keeps.
   const bond = new Bond({ host, data: config.bond });
@@ -641,6 +645,8 @@ async function boot() {
     capri.possessWindows = cfg.possess && !unavailable(brain, 'windowTracking');
     capri.restOn = unavailable(brain, 'taskbarRest') ? 'corner' : cfg.rest || 'corner';
     applyMotion(cfg.motion);
+    document.documentElement.style.setProperty('--panel-opacity', String(cfg.appearance?.panelOpacity ?? 1));
+    fx.canvas.style.opacity = String(cfg.appearance?.effectIntensity ?? 1);
     if ((cfg.claude === false && brain.watching) || cfg.assistant !== brain.assistant) {
       guide.answer(null);
       panel.hide();
@@ -674,6 +680,19 @@ async function boot() {
   host.onCommand(async (cmd) => {
     const t = brain.t;
     switch (cmd.name) {
+      case 'studioOpened':
+        if (chat.open) panel.hide();
+        break;
+      case 'place':
+        capri.teleport({ x: cmd.side === 'left' ? 140 : capri.view.w - 140, y: capri.view.floor });
+        break;
+      case 'guidePoint':
+        if (chat.open) panel.hide();
+        guide.scene(async () => {
+          await capri.pointAt(cmd.rect, { label: cmd.label });
+          await guide.ask({ face: 'look', line: cmd.line, actions: guide.ok() });
+        });
+        break;
       case 'companionTour':
         companion.open('tour');
         break;

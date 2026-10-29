@@ -5,9 +5,18 @@
 The menu now includes **Getting started**, **My memory** (add, edit and delete
 lasting facts), **Interact with a window** (Windows and Hyprland; confirmation
 required), and **Save resources**. Chat shortcuts include `help`, `what do you
-remember?`, `maximize Firefox` and `minimize kitty`. Window controls do not yet
-click or type inside other applications. See the [CachyOS / Hyprland guide](docs/linux/README.fr.md)
+remember?`, `maximize Firefox` and `minimize kitty`. See the [CachyOS / Hyprland guide](docs/linux/README.fr.md)
 for dependencies, Lua/hyprlang rules and keyboard shortcuts.
+
+**Settings, cloud voice and desktop control:** `capri --settings` opens a dedicated
+12-tab window for AI connections, voice, searchable memory, projects, visual
+routines, session summaries and tasks, guidance and input, focus timers, appearance,
+performance and diagnostics. `capri --palette` opens the command palette; **Ctrl K**
+works inside settings. Hyprland input supports clicks, Unicode text insertion and
+selected shortcuts after a preview and confirmation. Voice supports OpenAI/Groq
+transcription, OpenAI/ElevenLabs/Azure synthesis, and OpenAI Realtime.
+See the [settings and voice guide (French)](docs/SETTINGS.fr.md). The new settings
+window currently uses French labels; the companion keeps its existing languages.
 
 **My projects** keeps each project's memories and conversation separate, while
 general preferences stay available everywhere. **Hyprland routines** saves plans

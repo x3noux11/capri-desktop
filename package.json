@@ -1,6 +1,7 @@
 {
   "name": "capri-desktop",
-  "version": "0.4.4",
+  "version": "0.5.0",
+  "desktopName": "capri.desktop",
   "description": "Capri, the Project Capricorn construct, living on your desktop and narrating what Claude Code is doing.",
   "author": "mochiiwuff",
   "repository": "github:mochiiwuff/capri-desktop",
@@ -72,6 +73,7 @@
       "artifactName": "Capri-Setup-${version}.${ext}"
     },
     "linux": {
+      "syncDesktopName": true,
       "target": [
         "AppImage",
         "tar.gz"

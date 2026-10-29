@@ -375,6 +375,8 @@ html[data-motion='reduced'] .panel__bar {
   margin: 12px 0 2px;
 }
 
+.panel__plate { opacity: var(--panel-opacity, 1); }
+
 .panel__action {
   appearance: none;
   border: 0;

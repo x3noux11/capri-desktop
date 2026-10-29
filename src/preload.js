@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('host', {
   screens: () => ipcRenderer.invoke('screens:list'),
   moveScreen: (id) => ipcRenderer.invoke('screens:move', id),
   getConfig: () => ipcRenderer.invoke('config:get'),
+  openSettings: (tab) => ipcRenderer.send('studio:open', tab),
   systemInfo: () => ipcRenderer.invoke('system:info'),
   setConfig: (patch) => ipcRenderer.invoke('config:set', patch),
   listSounds: () => ipcRenderer.invoke('sounds:list'),

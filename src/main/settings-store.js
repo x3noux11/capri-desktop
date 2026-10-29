@@ -3,6 +3,7 @@
 const DEFAULTS = require('./config-defaults');
 const { createJsonStore } = require('./json-store');
 const { validProjects, validRoutines } = require('./workspace-settings');
+const studio = require('./studio-settings');
 
 const record = (v) => v && typeof v === 'object' && !Array.isArray(v)
   && [Object.prototype, null].includes(Object.getPrototypeOf(v))
@@ -22,6 +23,7 @@ function normalizeSettings(value) {
   }
   for (const [name, entry] of Object.entries(value)) {
     if (!Object.hasOwn(DEFAULTS, name)) continue; // preserve other fields, but never expose them to the renderer
+    if (Object.hasOwn(studio.DEFAULTS, name)) { if (!studio.validSetting(name, entry)) invalid(); continue; }
     if (name in choices) { if (!choices[name].includes(entry)) invalid(); }
     else if (typeof DEFAULTS[name] === 'boolean') { if (typeof entry !== 'boolean') invalid(); }
     else if (name === 'scale') { if (!Number.isFinite(entry) || entry <= 0 || entry > 4) invalid(); }
@@ -43,6 +45,7 @@ function normalizeSettings(value) {
   }
   const result = { ...structuredClone(DEFAULTS), ...value, schemaVersion: 1 };
   if (result.activeProject && !result.projects.some((p) => p.id === result.activeProject)) invalid();
+  if (result.worklog.some((p) => p.scope && !result.projects.some((s) => s.id === p.scope))) invalid();
   return result;
 }
 
@@ -60,6 +63,8 @@ function createSettingsStore({ file, keys, io }) {
     if (initialized) next.apiKeys = keys.migrate(next.apiKeys);
     // A removed/edited personal memory must disappear from the recovery backup too.
     const removedMemory = previous.memories.some((m) => !next.memories.includes(m))
+      || previous.worklog.some((p) => !next.worklog.some((n) => n.scope === p.scope && n.summary === p.summary
+        && p.tasks.every((t) => n.tasks.some((s) => s.id === t.id && s.text === t.text))))
       || previous.projects.some((p) => !next.projects.some((n) => n.id === p.id)
         || p.memories.some((m) => !next.projects.find((n) => n.id === p.id)?.memories.includes(m)));
     const result = store.write(next, { discardBackupHistory: removedMemory });

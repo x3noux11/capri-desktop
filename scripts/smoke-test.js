@@ -28,22 +28,25 @@ async function availablePort() {
 async function main() {
   assert.equal(process.platform, 'linux', 'this smoke test currently targets Linux');
   assert.ok(process.env.DISPLAY, 'an X11 display is required; use xvfb-run -a npm run test:smoke');
-  const electron = require('electron');
+  const electron = process.env.CAPRI_SMOKE_EXECUTABLE || require('electron');
   const port = await availablePort();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-smoke-'));
   const data = path.join(profile, 'data');
   fs.mkdirSync(path.join(data, 'applications'), { recursive: true });
   fs.writeFileSync(path.join(data, 'applications', 'smoke-editor.desktop'),
     '[Desktop Entry]\nType=Application\nName=Capri Smoke Editor\nExec=/usr/bin/true\n');
+  fs.writeFileSync(path.join(data, 'applications', 'smoke-browser.desktop'),
+    '[Desktop Entry]\nType=Application\nName=Capri Smoke Browser\nExec=/usr/bin/true\n');
   const log = [];
   let exited = false;
   let spawnError;
   let modelServer;
   // XDG_CONFIG_HOME isolates Electron userData. An explicit Chromium profile also
   // prevents the single-instance lock from attaching to a running user instance.
-  const child = spawn(electron, [ROOT, '--dev', `--user-data-dir=${path.join(profile, 'chromium')}`,
+  const child = spawn(electron, [...(process.env.CAPRI_SMOKE_EXECUTABLE ? [] : [ROOT]), '--dev', `--user-data-dir=${path.join(profile, 'chromium')}`,
     ...(process.env.CAPRI_SMOKE_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
-    '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--password-store=basic'], {
+    '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--password-store=basic',
+    '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'], {
     cwd: ROOT,
     env: { ...process.env, CAPRI_PORT: String(port), XDG_CONFIG_HOME: profile,
       XDG_CACHE_HOME: path.join(profile, 'cache'), XDG_DATA_HOME: data, HYPRLAND_INSTANCE_SIGNATURE: '' },
@@ -66,8 +69,8 @@ async function main() {
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(2000),
     });
-    assert.equal(response.status, 200, `${route} should respond successfully`);
     const result = await response.json();
+    assert.equal(response.status, 200, `${route} should respond successfully: ${JSON.stringify(result)}`);
     assert.equal(result.ok, true, `${route} should succeed: ${JSON.stringify(result)}`);
     return result;
   }
@@ -222,6 +225,14 @@ async function main() {
     let accept = true;
     modelServer = http.createServer((req, res) => {
       const ok = accept && req.headers.authorization === `Bearer ${syntheticKey}`;
+      if (ok && req.url.endsWith('/chat/completions')) {
+        req.resume();
+        req.on('end', () => {
+          res.writeHead(200, { 'content-type': 'text/event-stream' });
+          res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Bonjour depuis le modèle de test.' } }] })}\n\ndata: [DONE]\n\n`);
+        });
+        return;
+      }
       res.writeHead(ok ? 200 : 401, { 'content-type': 'application/json' });
       res.end(JSON.stringify(ok ? { data: [{ id: 'smoke-model' }] }
         : { error: { message: req.headers.authorization || 'missing key' } }));
@@ -229,10 +240,12 @@ async function main() {
     modelServer.listen(0, '127.0.0.1');
     await once(modelServer, 'listening');
     const url = `http://127.0.0.1:${modelServer.address().port}/v1`;
+    await evaluate('window.host.setConfig({chatModel: "previous-provider-model"})');
     const configured = await evaluate(`window.host.useProvider(${JSON.stringify({ provider: 'custom', key: syntheticKey, url })})`);
     assert.equal(configured.ok, true);
     assert.equal(configured.storage, 'session');
     const sessionCfg = await evaluate('window.host.getConfig()');
+    assert.equal(sessionCfg.chatModel, null, 'switching providers clears an unavailable previous model');
     assert.equal(sessionCfg.keyStorage.sessionKeys, 1);
     assert.equal(sessionCfg.apiKeys, undefined);
     assert.ok(!JSON.stringify(sessionCfg).includes(syntheticKey));
@@ -263,9 +276,102 @@ async function main() {
     await request('event', { hook_event_name: 'SessionEnd', session_id: session });
     await waitFor(() => evaluate(`!window.dev.brain.sessions.has(${JSON.stringify(session)})`),
       'the completed session to be removed');
+
+    // The settings window has its own restricted preload, normal window and real controls.
+    const studioEval = async (js) => (await request('debug/studio-eval', { js })).value;
+    const studioSet = (selector, value) => studioEval(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); e.value = ${JSON.stringify(value)}; e.dispatchEvent(new Event('input', {bubbles:true})); })()`);
+    const studioClick = async (selector) => {
+      await waitFor(() => studioEval(`Boolean(document.querySelector(${JSON.stringify(selector)}))`), `settings control ${selector}`);
+      await studioEval(`document.querySelector(${JSON.stringify(selector)}).click()`);
+    };
+    const studioTab = async (id, selector) => {
+      await studioClick(`[data-tab="${id}"]`);
+      await waitFor(() => studioEval(`Boolean(document.querySelector(${JSON.stringify(selector)}))`), `settings tab ${id}`);
+    };
+    await request('debug/studio', { tab: 'general' });
+    await waitFor(() => studioEval('window.studioReady && Boolean(document.querySelector("#save-general"))'), 'settings initialization');
+    const studioState = await studioEval('window.desk.state()');
+    assert.equal(studioState.ok, true); assert.equal(studioState.value.config.apiKeys, undefined);
+    assert.ok(!JSON.stringify(studioState).includes(syntheticKey));
+    await studioSet('#user-name', 'Studio test'); await studioClick('#save-general');
+    await waitFor(() => evaluate('window.dev.brain.custom.userName === "Studio test"'), 'settings changes to reach the overlay');
+
+    await studioTab('memory', '#memory-new');
+    await studioSet('#memory-new', 'A searchable studio memory'); await studioClick('#memory-add');
+    await waitFor(() => evaluate('(async () => (await window.host.getConfig()).memories.includes("A searchable studio memory"))()'), 'the memory dashboard save');
+    await studioSet('#memory-search', 'not present');
+    assert.equal(await studioEval('document.querySelectorAll("#memory-list .row").length'), 0);
+    await studioSet('#memory-search', 'searchable');
+    assert.equal(await studioEval('document.querySelectorAll("#memory-list .row").length'), 1);
+
+    await studioTab('projects', '#project-new');
+    await studioSet('#project-new', 'Studio project'); await studioClick('#project-create');
+    await waitFor(() => evaluate('(async () => (await window.host.getConfig()).projects.some(p=>p.name==="Studio project"))()'), 'studio project creation');
+    await studioTab('activity', '#task-new');
+    await studioSet('#task-new', 'Finish the studio tests'); await studioClick('#task-add');
+    await waitFor(() => evaluate('(async () => (await window.host.getConfig()).worklog.some(p=>p.tasks.some(t=>t.text==="Finish the studio tests")))()'), 'scoped tasks to persist');
+
+    await studioTab('routines', '#routine-new'); await studioClick('#routine-new');
+    await studioSet('#routine-name', 'Visual routine');
+    await studioSet('#routine-app', path.join(data, 'applications', 'smoke-editor.desktop')); await studioSet('#routine-workspace', '2');
+    await studioClick('#routine-add-step');
+    await waitFor(() => studioEval('document.querySelectorAll("#routine-board .step").length === 1'), 'first visual step');
+    await studioSet('#routine-app', path.join(data, 'applications', 'smoke-browser.desktop')); await studioSet('#routine-workspace', '3');
+    await studioClick('#routine-add-step');
+    await waitFor(() => studioEval('document.querySelectorAll("#routine-board .step").length === 2'), 'second visual step');
+    await studioEval(`(() => { const steps = document.querySelectorAll('#routine-board .step'); const transfer = new DataTransfer();
+      steps[0].dispatchEvent(new DragEvent('dragstart', {dataTransfer:transfer,bubbles:true}));
+      steps[1].dispatchEvent(new DragEvent('drop', {dataTransfer:transfer,bubbles:true,cancelable:true})); })()`);
+    await studioClick('#routine-save');
+    await waitFor(() => evaluate('(async () => (await window.host.getConfig()).routines.some(r=>r.name==="Visual routine"))()'), 'visual routine save');
+    const visual = (await evaluate('window.host.getConfig()')).routines.find((r) => r.name === 'Visual routine');
+    assert.equal(visual.steps[0].desktopId, path.join(data, 'applications', 'smoke-browser.desktop'));
+    await studioClick('#routine-run');
+    await waitFor(() => studioEval('document.querySelector("#confirm").open'), 'routine preview');
+    await studioClick('#confirm [value="cancel"]');
+
+    await studioTab('focus', '#focus-start'); await studioClick('#focus-start');
+    await waitFor(() => evaluate('(async () => (await window.host.getConfig()).focusActive)()'), 'focus mode to activate');
+    assert.equal(await evaluate('window.dev.capri.wander'), false);
+    await studioClick('#focus-stop');
+    await waitFor(() => evaluate('(async () => !(await window.host.getConfig()).focusActive)()'), 'focus mode to stop');
+    await studioTab('appearance', '#appearance-accent'); await studioSet('#appearance-accent', '#aabbcc'); await studioClick('#appearance-save');
+    await waitFor(() => evaluate('(async () => (await window.host.getConfig()).appearance.accent === "#aabbcc")()'), 'appearance save');
+    await studioTab('performance', '#performance-profile'); await studioSet('#performance-profile', 'eco'); await studioClick('#performance-save');
+    await waitFor(() => evaluate('(async () => (await window.host.getConfig()).performanceProfile === "eco")()'), 'performance profile save');
+    await studioTab('diagnostics', '#diagnostics-refresh');
+    await studioTab('control', '#control-action');
+    const clipboardCheck = await request('debug/clipboard-paste-check', {});
+    assert.equal(clipboardCheck.inserted, true); assert.equal(clipboardCheck.restored, true); assert.match(clipboardCheck.html, /<b>Original<\/b>/);
+
+    await studioTab('ai', '#ai-test'); await studioClick('#ai-test');
+    await waitFor(() => studioEval('document.querySelector("#ai-result").textContent.includes("smoke-model")'), 'provider connection test');
+    await studioTab('voice', '#voice-start');
+    await studioEval(`(async () => { const c = (await window.desk.state()).value.config; return window.desk.config({speech:{...c.speech,speakReplies:false}}); })()`);
+    await waitFor(() => studioEval('Boolean(document.querySelector("#voice-send"))'), 'voice settings refresh');
+    await studioSet('#voice-message', 'Bonjour Capri'); await studioClick('#voice-send');
+    await waitFor(() => studioEval('document.querySelector("#voice-answer").textContent.includes("Bonjour depuis le modèle de test.")'), 'streamed vocal-panel chat');
+    await studioEval('document.querySelector("#voice-start").dispatchEvent(new KeyboardEvent("keydown",{code:"Space",key:" ",bubbles:true,cancelable:true}))');
+    await waitFor(() => studioEval('document.querySelector("#voice-status").classList.contains("listening")'), 'fake microphone recording');
+    await studioEval('document.querySelector("#voice-start").dispatchEvent(new KeyboardEvent("keyup",{code:"Space",key:" ",bubbles:true,cancelable:true}))');
+    await waitFor(() => studioEval('document.querySelector("#voice-status").textContent === "Micro éteint"'), 'microphone release after an unconfigured cloud transcription');
+    await studioClick('#voice-stop');
+
+    await studioEval('document.dispatchEvent(new KeyboardEvent("keydown",{key:"k",ctrlKey:true,bubbles:true,cancelable:true}))');
+    await waitFor(() => studioEval('document.querySelector("#palette").open'), 'command palette');
+    await studioSet('#palette-query', 'Mémoire');
+    assert.equal(await studioEval('document.querySelectorAll("#palette-list button").length'), 1);
+    await studioClick('#palette-list button');
+    await waitFor(() => studioEval('Boolean(document.querySelector("#memory-search"))'), 'palette navigation');
+    await studioTab('general', '#save-general');
+    if (process.env.CAPRI_SMOKE_CAPTURE === '1') {
+      await studioEval('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+      await delay(250);
+      await request('debug/studio-capture', {});
+    }
     assert.equal(exited, false);
     assert.doesNotMatch(log.join(''), /\[capri\] boot failed|\[capri\] renderer gone/);
-    console.log(`Smoke test passed: Electron, WebGL (${renderer.width}×${renderer.height}), onboarding, memories, project isolation/deletion, routine editor/cancellation, power mode, diagnostics, session-only keys and hook delivery.`);
+    console.log(`Smoke test passed: Electron, WebGL (${renderer.width}×${renderer.height}), projects, routines, settings tabs, palette, tasks, focus, appearance, streamed chat, fake microphone lifecycle, protected keys and hooks.`);
   } catch (err) {
     console.error(log.join(''));
     const state = await evaluate(`(() => {

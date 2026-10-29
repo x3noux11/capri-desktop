@@ -214,6 +214,7 @@ function restoreClaude(saved) {
 const isChatSession = (id) => Boolean(id) && id === claudeSession;
 
 async function chat(id, cfg, { model, messages, addDir }, onDelta, signal) {
+  if (signal?.aborted) throw Object.assign(new Error('stopped'), { name: 'AbortError' });
   const p = endpoint(id, cfg);
   if (p.kind === 'ollama') return ollama.chat({ model, messages }, onDelta, signal);
   // Claude Code keeps its own memory of the conversation: only her persona and your last message go

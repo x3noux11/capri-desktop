@@ -28,6 +28,8 @@ const windowControl = require('./window-control').createWindowControl();
 const apps = require('./apps');
 const launch = require('./launch');
 const routines = require('./routines').createRoutines({ load: () => config.load() });
+const { effectiveConfig } = require('./studio-settings');
+const { createStudio } = require('./studio');
 const files = require('./files');
 const { ASSISTANTS, assistant } = require('./assistants');
 const activeAssistant = () => assistant(config.load().assistant); // Claude Code or Codex
@@ -53,6 +55,8 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let overlay = null;
+let studio = null;
+let configureProvider = null;
 let tray = null;
 let trayMenu = null; // also what she opens when you right-click her
 let demoTimer = null;
@@ -424,12 +428,12 @@ function watchRice() {
 }
 
 function rendererConfig() {
-  const cfg = config.publicValues();
+  const cfg = effectiveConfig(config.publicValues(), { battery: app.isReady() && powerMonitor.isOnBatteryPower() });
   const lang = resolveLang(cfg.lang);
   return { ...cfg, keys: config.keys.names(config.load().apiKeys).filter((id) => Object.hasOwn(llm.PROVIDERS, id)),
     keyStorage: config.keys.status(), storageText: storageText(lang),
     assistant: activeAssistant().id, lang, langSetting: cfg.lang,
-    rice: cfg.riceColors !== false ? ricePalette() : null,
+    rice: cfg.riceColors !== false && ricePalette() ? ricePalette() : { '--violet': cfg.appearance.accent },
     floorGap: overlayArea().gap, system: { features: platformInfo?.features || {}, session: platformInfo?.session || null, text: platformText(lang) } };
 }
 
@@ -478,6 +482,9 @@ async function showDiagnostics() {
 
 function updateConfig(patch, renderer = false) {
   const before = config.load();
+  if (Array.isArray(patch.projects) && !Object.hasOwn(patch, 'worklog')) {
+    patch = { ...patch, worklog: before.worklog.filter((p) => !p.scope || patch.projects.some((s) => s?.id === p.scope)) };
+  }
   let saved = saveConfig(patch, renderer);
   const after = config.load();
   if (saved && before.activeProject !== after.activeProject) {
@@ -496,6 +503,7 @@ function updateConfig(patch, renderer = false) {
   }
   const cfg = rendererConfig();
   overlay?.webContents.send('capri:config', cfg);
+  studio?.changed();
   rebuildTray();
   return saved ? cfg : { ...cfg, saveError: true };
 }
@@ -531,6 +539,9 @@ function rebuildTray() {
     { label: t.online(PORT), enabled: false },
     { label: t.sync(Math.min(100, Math.floor(xp / 10)), t.stages[stage]), enabled: false },
     { type: 'separator' },
+    { label: resolveLang(cfg.lang) === 'fr' ? 'Paramètres…' : 'Settings…', click: () => studio?.open() },
+    { label: resolveLang(cfg.lang) === 'fr' ? 'Palette de commandes' : 'Command palette', click: () => studio?.open('general', true) },
+    { label: resolveLang(cfg.lang) === 'fr' ? 'Mode vocal' : 'Voice mode', click: () => studio?.open('voice') },
     { label: resolveLang(cfg.lang) === 'fr' ? 'Prise en main' : 'Getting started', click: () => sendCommand('companionTour') },
     { label: resolveLang(cfg.lang) === 'fr' ? 'Ma mémoire' : 'My memory', click: () => sendCommand('memoryPanel') },
     { label: resolveLang(cfg.lang) === 'fr' ? 'Mes projets' : 'My projects', click: () => sendCommand('projectPanel') },
@@ -950,6 +961,7 @@ function registerIpc() {
     return { origin: { x: o.x, y: o.y }, width: o.width, height: o.height, gap: overlayArea().gap };
   });
   ipcMain.handle('config:get', () => rendererConfig());
+  ipcMain.on('studio:open', (e, tab) => { if (e.sender === overlay?.webContents) studio?.open(typeof tab === 'string' ? tab : 'general'); });
   ipcMain.handle('hooks:status', () => activeHooks().status());
   ipcMain.handle('config:set', (_e, patch) => updateConfig(patch, true));
   ipcMain.handle('demo:window', (_e, open) => demoWindow(open));
@@ -1083,7 +1095,7 @@ function registerIpc() {
   ipcMain.on('setup:cancel', () => pulling?.abort());
   // Validate a provider before persisting anything. A failed check must not overwrite
   // working settings or leak a key through a server's error message.
-  ipcMain.handle('setup:use', async (_e, { provider, key, url } = {}) => {
+  configureProvider = async ({ provider, key, url } = {}) => {
     const t = storageText(resolveLang(config.load().lang));
     if (typeof provider !== 'string' || !Object.hasOwn(llm.PROVIDERS, provider) || (key !== undefined && (typeof key !== 'string' || !key.trim() || key.length > 16384))
       || (url !== undefined && typeof url !== 'string')) return { ok: false, error: t.providerFailed };
@@ -1094,6 +1106,7 @@ function registerIpc() {
     try {
       const models = await llm.models(provider, candidate);
       if (!models?.length) return { ok: false, error: t.providerFailed };
+      if (provider !== config.load().provider && !models.includes(config.load().chatModel)) patch.chatModel = null;
       const prepared = rawKey && config.keys.prepare(rawKey);
       if (prepared) {
         patch.apiKeys = { ...config.load().apiKeys };
@@ -1108,7 +1121,8 @@ function registerIpc() {
       rebuildTray();
       return { ok: true, model: pickModel(), storage: prepared?.storage };
     } catch { return { ok: false, error: t.providerFailed }; }
-  });
+  };
+  ipcMain.handle('setup:use', (_e, choice) => configureProvider(choice));
   ipcMain.on('setup:keyPage', (_e, provider) => setup.KEY_PAGES[provider] && shell.openExternal(setup.KEY_PAGES[provider]));
   ipcMain.handle('setup:launch', (_e, integration) => featureAvailable('ollamaLaunch')
     ? setup.launchThroughOllama(integration)
@@ -1158,6 +1172,8 @@ function registerIpc() {
   });
   // a long task done while you were elsewhere: a desktop notification; clicked, Claude's window
   ipcMain.on('desktop:notify', (_e, note) => {
+    const c = config.load();
+    if (c.notificationMode === 'off' || ((c.notificationMode === 'important' || (c.focus.phase === 'work' && c.focus.until > Date.now())) && !['task', 'permission'].includes(note?.kind))) return;
     if (!Notification.isSupported()) return;
     const n = new Notification({
       title: String(note?.title || 'Capri').slice(0, 120),
@@ -1221,6 +1237,26 @@ const testWins = new Map(); // name -> test window
 
 async function debugHandler(route, body) {
   if (!DEV) throw new Error('debug routes need --dev');
+  if (route === 'studio') { studio.open(body.tab || 'general', Boolean(body.palette)); return { ok: true }; }
+  if (route === 'studio-eval') return { ok: true, value: await studio.window.webContents.executeJavaScript(String(body.js || 'null')) };
+  if (route === 'studio-capture') {
+    const folder = path.join(ROOT, 'captures'); fs.mkdirSync(folder, { recursive: true });
+    const file = path.join(folder, 'settings.png'); fs.writeFileSync(file, (await studio.window.webContents.capturePage()).toPNG());
+    return { ok: true, file };
+  }
+  if (route === 'clipboard-paste-check') {
+    const paste = require('./clipboard-paste').createClipboardPaste({ clipboard, ClipboardItem, wait: async () => {} });
+    let result;
+    // The outer insertion preserves the real user's clipboard even on a graphical desktop.
+    await paste('Original', async () => {
+      await clipboard.write([new ClipboardItem({ 'text/plain': 'Original', 'text/html': '<b>Original</b>' })]);
+      let inserted = false;
+      await paste('Été — 日本語', async () => { inserted = await clipboard.readText() === 'Été — 日本語'; }, new AbortController().signal);
+      const items = await clipboard.read(); const html = items.find((item) => item.types.includes('text/html'));
+      result = { ok: true, inserted, restored: await clipboard.readText() === 'Original', html: html ? await (await html.getType('text/html')).text() : '' };
+    }, new AbortController().signal);
+    return result;
+  }
   if (route === 'command') {
     sendCommand(body.name, body);
     return { ok: true };
@@ -1349,6 +1385,12 @@ function main() {
   // `capri --talk` (a Hyprland keybind, say): her chat opens, or closes; `--toggle`: as Ctrl+Alt+C
   app.on('second-instance', (_e, argv) => {
     if (argv.includes('--ask-selection')) askSelection();
+    else if (argv.includes('--settings')) studio?.open();
+    else if (argv.includes('--palette')) studio?.open('general', true);
+    else if (argv.includes('--voice-start')) studio?.command('voiceStart');
+    else if (argv.includes('--voice-stop')) studio?.command('voiceStop');
+    else if (argv.includes('--voice')) studio?.open('voice');
+    else if (argv.includes('--stop-control')) studio?.stop();
     else if (argv.includes('--talk')) sendCommand('talk');
     else if (argv.includes('--memory')) sendCommand('memoryPanel');
     else if (argv.includes('--windows')) sendCommand('windowPanel');
@@ -1367,6 +1409,16 @@ function main() {
     serveProtocol();
     registerIpc();
     createOverlay();
+    studio = createStudio({ config, updateConfig, readMemory, saveMemory, llmConfig, routines, windowControl,
+      resolveLang, refreshPlatform, sendCommand, configureProvider: (choice) => configureProvider(choice),
+      releaseFocus: async () => {
+        if (hypr?.placed) await hypr.focus(false);
+        else if (overlay && !overlay.isDestroyed()) { overlay.setFocusable(false); overlay.blur(); }
+      } });
+    if (process.argv.includes('--settings')) studio.open();
+    if (process.argv.includes('--palette')) studio.open('general', true);
+    if (process.argv.includes('--voice')) studio.open('voice');
+    if (process.argv.includes('--voice-start')) studio.command('voiceStart');
     createTray();
     readMemory();
     const stored = config.status();
@@ -1390,6 +1442,10 @@ function main() {
       onDebug: DEV ? debugHandler : null,
     });
     globalShortcut.register('Control+Alt+C', () => toggleVisible());
+    globalShortcut.register('Control+Alt+Space', () => studio.open('general', true));
+    globalShortcut.register('Control+Alt+Escape', () => studio.stop());
+    powerMonitor.on('on-battery', () => updateConfig({}));
+    powerMonitor.on('on-ac', () => updateConfig({}));
     watchRice();
     startPointer();
     const storedChat = readMemory();
@@ -1412,6 +1468,7 @@ function main() {
   });
 
   app.on('will-quit', () => {
+    studio?.destroy();
     globalShortcut.unregisterAll();
     windowWatch?.stop();
     clearTimeout(pointerTimer);
