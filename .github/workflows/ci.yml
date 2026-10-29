@@ -55,4 +55,18 @@ jobs:
           sudo chown root:root node_modules/electron/dist/chrome-sandbox
           sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
       - name: Start Electron and exercise the renderer and bridge
-        run: xvfb-run -a -s '-screen 0 1920x1080x24' npm run test:smoke
+        shell: bash
+        run: |
+          set -o pipefail
+          xvfb-run -a -s '-screen 0 1920x1080x24' npm run test:smoke 2>&1 | tee "$RUNNER_TEMP/capri-electron-smoke.log"
+      - name: Report Electron failure in the run summary
+        if: failure()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/capri-electron-smoke.log" ]]; then
+            {
+              printf '### Electron smoke test failure\n\n```text\n'
+              tail -100 "$RUNNER_TEMP/capri-electron-smoke.log"
+              printf '\n```\n'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
